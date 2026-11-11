@@ -36,7 +36,7 @@ export function buildVisualEnrichment(model) {
     affectedIds: affected.map(n => n.id),
     severity: {
       level,
-      rationale: i18n.getMessage('Rated from the share of the catalog affected: 50% or more is high, 20% or more is medium, anything less is low. This is a presentation rule, not a measure of business impact.')
+      rationale: i18n.getMessage('Prevalence is the share of the catalog affected: 50% or more is high, 20% or more is medium, anything less is low. It is not a measure of business impact.')
     },
     recommendedAction: {
       id: 'prepare-visual-enrichment',

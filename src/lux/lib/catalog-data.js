@@ -70,21 +70,28 @@ async function fetchAllRaw(table, query, fields, parallel) {
   }
 }
 
+/**
+ * Item classification is the record's own table (sys_class_name), shown with
+ * the platform's label for that table. These are the labels sys_db_object
+ * holds on this instance; they are the fallback if that table cannot be read,
+ * and the live labels replace them when it can. A category name is never used.
+ */
 const CLASS_LABELS = {
-  sc_cat_item: 'Catalog item',
-  sc_cat_item_producer: 'Record producer',
-  sc_cat_item_content: 'Content item',
+  sc_cat_item: 'Catalog Item',
+  sc_cat_item_producer: 'Record Producer',
+  sc_cat_item_content: 'Content Item',
   sc_cat_item_guide: 'Order guide',
-  sc_cat_item_composite_producer: 'Composite producer',
-  std_change_record_producer: 'Standard change',
-  sn_cmp_bp_cat_item: 'Cloud blueprint',
-  sn_cmp_rsrc_opr_cat_item: 'Cloud operation',
-  sn_eam_enterprise_cat_item: 'Enterprise asset',
-  pc_hardware_cat_item: 'Hardware',
-  pc_software_cat_item: 'Software',
-  pc_product_cat_item: 'Product'
+  sc_cat_item_composite_producer: 'Composite Record Producer',
+  std_change_record_producer: 'Standard Change Template',
+  sn_cmp_bp_cat_item: 'Cloud Catalog Item',
+  sn_cmp_rsrc_opr_cat_item: 'Resource Operation Catalog Item',
+  sn_eam_enterprise_cat_item: 'Enterprise Catalog',
+  pc_hardware_cat_item: 'Hardware Catalog',
+  pc_software_cat_item: 'Software Catalog',
+  pc_product_cat_item: 'Product Catalog Item'
 };
-export const classLabel = c => CLASS_LABELS[c] || String(c || '').replace(/^sc_|_cat_item$/g, '').replace(/_/g, ' ') || 'Other';
+const liveClassLabels = {};
+export const classLabel = c => liveClassLabels[c] || CLASS_LABELS[c] || String(c || '').replace(/_/g, ' ').trim() || 'Other';
 
 /** Quality criteria: each is a plain, checkable fact on the record. */
 export const CRITERIA = [
@@ -137,7 +144,7 @@ export function loadCatalog(force = false) {
 
 async function build() {
   const t0 = performance.now();
-  const [items, withDescription, cats, links, ritms, offerings, catalogRows] = await Promise.all([
+  const [items, withDescription, cats, links, ritms, offerings, catalogRows, tableLabels] = await Promise.all([
     fetchAll('sc_cat_item', 'sys_idISNOTEMPTY', 'sys_id,name,sys_class_name,active,category,short_description,icon,picture,sys_created_on,sys_updated_on'),
     // Descriptions are bulky; the first paint only needs to know which items have one.
     fetchAll('sc_cat_item', 'descriptionISNOTEMPTY', 'sys_id'),
@@ -145,8 +152,10 @@ async function build() {
     fetchAll('sc_cat_item_category', 'sys_idISNOTEMPTY', 'sc_cat_item,sc_category'),
     fetchAll('sc_req_item', 'sys_idISNOTEMPTY', 'cat_item,sys_created_on'),
     fetchAll('service_offering', 'sys_idISNOTEMPTY', 'sys_id,name,operational_status'),
-    fetchAll('sc_catalog', 'sys_idISNOTEMPTY', 'sys_id,title')
+    fetchAll('sc_catalog', 'sys_idISNOTEMPTY', 'sys_id,title'),
+    fetchAll('sys_db_object', `nameIN${Object.keys(CLASS_LABELS).join(',')}`, 'name,label')
   ]);
+  tableLabels.rows.forEach(r => r.label && (liveClassLabels[r.name] = r.label));
   timing.totalMs = Math.round(performance.now() - t0);
   if (typeof window !== 'undefined') window.__catalogTiming = timing;
   if (items.error) throw new Error(items.error);

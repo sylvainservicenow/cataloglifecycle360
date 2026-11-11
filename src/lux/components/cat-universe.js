@@ -528,6 +528,11 @@ export default class CatUniverse extends AIUXElement {
       border: 2px solid #032d42;
       box-sizing: border-box;
     }
+    .pct {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
     .scope-note {
       margin: 6px 0 0;
       font-size: 0.75rem;
@@ -1475,7 +1480,7 @@ export default class CatUniverse extends AIUXElement {
         <span class="tag ${n.active ? 'ok' : 'off'}">${n.active ? i18n.getMessage('Active') : i18n.getMessage('Inactive')}</span>
       </div>
       ${n.shortDescription ? html`<p>${n.shortDescription}</p>` : html`<p><em>${i18n.getMessage('No short description')}</em></p>`}
-      <strong>${i18n.getMessage('Metadata completeness')} · ${Math.round(n.score * 100)}%</strong>
+      <strong class="pct"><i class="sw" style="background:${FIELD_COLORS[n.fields]}"></i>${i18n.getMessage('Metadata completeness')} · ${n.fields * 25}%</strong>
       <ul class="checks">${CRITERIA.map(c => html`<li><span class="mark ${n.flags[c.key] ? 'y' : 'n'}" aria-hidden="true">${n.flags[c.key] ? '✓' : '✕'}</span>
         <span>${c.label()} <span class="vh">${n.flags[c.key] ? i18n.getMessage('present') : i18n.getMessage('missing')}</span></span></li>`)}</ul>
       <dl>
@@ -1538,7 +1543,7 @@ export default class CatUniverse extends AIUXElement {
           const label = CRITERIA.find(c => c.key === this._gap).label();
           items = [sw(AMBER, i18n.getMessage('Missing {0} · {1}', label.toLowerCase(), fmt(s.missing[this._gap]))), sw(SOFT, i18n.getMessage('Present · {0}', fmt(s.items - s.missing[this._gap])))];
         } else {
-          items = [html`<li class="note">${i18n.getMessage('Fields present, of 4')}</li>`, ...FIELD_COLORS.map((c, i) => sw(c, `${i} · ${fmt(s.byFields[i])}`))];
+          items = FIELD_COLORS.map((c, i) => sw(c, i18n.getMessage('{0}% complete · {1}', String(i * 25), fmt(s.byFields[i]))));
         }
         break;
       case 'lifecycle':
@@ -1556,8 +1561,7 @@ export default class CatUniverse extends AIUXElement {
         break;
       default: {
         const types = Object.entries(s.classes).sort((a, b) => b[1] - a[1]);
-        items = [...types.slice(0, 5).map(([c, n]) => sw(CLASS_COLORS[this._classIndex(c)], `${classLabel(c)} · ${fmt(n)}`)),
-          types.length > 5 ? html`<li class="note">${i18n.getMessage('+{0} more types', String(types.length - 5))}</li>` : nothing];
+        items = types.map(([c, n]) => sw(CLASS_COLORS[this._classIndex(c)], `${classLabel(c)} · ${fmt(n)}`));
       }
     }
     return html`<ul class="legend glass" aria-label=${i18n.getMessage('Legend')}>
@@ -1590,7 +1594,7 @@ export default class CatUniverse extends AIUXElement {
     switch (this._lens) {
       case 'quality':
         body = html`<h3>${i18n.getMessage('Metadata completeness')}</h3>
-          <p><span class="big">${fmt(s.complete)}</span> ${i18n.getMessage('of {0} items have all four fields. Select a field to highlight what is missing.', fmt(total))}</p>
+          <p><span class="big">${fmt(s.complete)}</span> ${i18n.getMessage('of {0} items are 100% complete (all four fields). Select a field to highlight what is missing.', fmt(total))}</p>
           ${CRITERIA.map(c => html`<button class="row-btn" aria-pressed=${this._gap === c.key} @click=${() => { this._gap = this._gap === c.key ? null : c.key; }}>
             <span class="row"><span>${c.label()}</span><span>${i18n.getMessage('{0} missing', fmt(s.missing[c.key]))}</span></span>
             <div class="track"><div class="fill" style="width:${100 - (100 * s.missing[c.key]) / total}%"></div></div></button>`)}`;

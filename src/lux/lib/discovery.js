@@ -72,7 +72,7 @@ export function classBreakdown(model, ids) {
 }
 
 export function severityFromShare(share, total) {
-  // Presentation rule, stated to the user: share of the assessed catalog affected.
+  // Prevalence, not business impact: the share of the assessed catalog affected.
   if (!total) return 'none';
   return share >= 0.5 ? 'high' : share >= 0.2 ? 'medium' : share > 0 ? 'low' : 'none';
 }

@@ -905,10 +905,10 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       return {
         markers: m,
         legend: [
-          {color: colors[0], label: i18n.getMessage('No failed check · {0}', fmt(tally[0]))},
-          {color: colors[1], label: i18n.getMessage('1 failed · {0}', fmt(tally[1]))},
-          {color: colors[2], label: i18n.getMessage('2 failed · {0}', fmt(tally[2]))},
-          {color: colors[3], label: i18n.getMessage('3 or more · {0}', fmt(tally[3]))},
+          {color: colors[0], label: i18n.getMessage('No gap found · {0}', fmt(tally[0]))},
+          {color: colors[1], label: i18n.getMessage('1 gap · {0}', fmt(tally[1]))},
+          {color: colors[2], label: i18n.getMessage('2 gaps · {0}', fmt(tally[2]))},
+          {color: colors[3], label: i18n.getMessage('3 or more gaps · {0}', fmt(tally[3]))},
           {color: SOFT, label: i18n.getMessage('Inactive, not assessed · {0}', fmt(this._model.nodes.filter(n => !n.active).length))}
         ]
       };
@@ -1019,7 +1019,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       <div class="focus-body">
       <div class="badges">
         <span class="badge ${d.method.classification === 'ai' ? 'ai' : 'det'}">${d.method.classification === 'ai' ? i18n.getMessage('AI assessment') : i18n.getMessage('Deterministic check')}</span>
-        ${foundation ? html`<span class="badge">${i18n.getMessage('Foundation only')}</span>` : html`<span class="badge ${d.severity.level}">${i18n.getMessage('Severity: {0}', this._sev(d.severity.level))}</span>`}
+        ${foundation ? html`<span class="badge">${i18n.getMessage('Foundation only')}</span>` : html`<span class="badge ${d.severity.level}">${i18n.getMessage('Prevalence: {0}', this._sev(d.severity.level))}</span>`}
       </div>
       <div class="eyebrow">${d.id === 'ai-readiness' ? i18n.getMessage('Discovery · AI readiness') : d.id === 'csdm-alignment' ? i18n.getMessage('Discovery · CSDM') : i18n.getMessage('Discovery · Visual enrichment')}</div>
       <h1>${d.title}</h1>
@@ -1090,8 +1090,8 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
           <ul>${d.evidence.sources.map(s => html`<li><b>${s.table}</b> · ${s.fields.join(', ')}<br><span class="rule">${s.note}</span></li>`)}</ul>
           <h3>${i18n.getMessage('Certainty')}</h3>
           <p>${d.method.classification === 'deterministic' ? i18n.getMessage('Exact: each finding is a direct check of a record field, so there is no confidence estimate to give.') : i18n.getMessage('Model-generated: treat as a suggestion.')}</p>
-          <h3>${i18n.getMessage('Severity')}</h3><p>${d.severity.rationale}</p>
-          ${d.id === 'ai-readiness' ? html`<h3>${i18n.getMessage('Failed checks, active items')}</h3><ul>${d.stats.perCheck.map(p => html`<li>${p.check.label()}: <b>${fmt(p.failed)}</b></li>`)}</ul>` : nothing}
+          <h3>${i18n.getMessage('Prevalence')}</h3><p>${d.severity.rationale}</p>
+          ${d.id === 'ai-readiness' ? html`<h3>${i18n.getMessage('Gaps found by each check, active items')}</h3><ul>${d.stats.perCheck.map(p => html`<li>${p.check.label()}: <b>${fmt(p.failed)}</b></li>`)}</ul>` : nothing}
           <h3>${i18n.getMessage('Assessed')}</h3><p>${new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(d.assessedAt))} · ${d.version}</p>`;
       case 'records': {
         const ids = this._scopeIds();
@@ -1146,7 +1146,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     const v = this._vars?.id === n.id ? this._vars : null;
     return html`<h3>${i18n.getMessage('Deterministic checks')}</h3>
       <ul class="checks">${a.results.map(r => html`<li><span class="mark ${r.state}" aria-hidden="true">${r.state === 'pass' ? '✓' : r.state === 'fail' ? '✕' : '–'}</span>
-        <span>${r.check.label()} <span class="vh">${r.state}</span>${r.detail ? html`<small>${r.detail}</small>` : r.state === 'na' ? html`<small>${i18n.getMessage('Does not apply to this item type.')}</small>` : nothing}</small></span></li>`)}</ul>
+        <span>${r.check.label()} <span class="vh">${{pass: i18n.getMessage('no gap found'), fail: i18n.getMessage('gap found'), na: i18n.getMessage('not applicable'), pending: i18n.getMessage('pending')}[r.state]}</span>${r.detail ? html`<small>${r.detail}</small>` : r.state === 'na' ? html`<small>${i18n.getMessage('Does not apply to this item type.')}</small>` : nothing}</small></span></li>`)}</ul>
       <h3>${i18n.getMessage('Form')}</h3>
       ${!v || v.loading ? html`<p class="muted" role="status">${i18n.getMessage('Reading this item’s variables…')}</p>`
         : v.error ? html`<div class="note bad">${v.error}</div>`
@@ -1214,12 +1214,12 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     const by = nodeIndex(this._model);
     const items = ids.slice(0, 4);
     return html`<div class="step">
-        <h3>2 · ${i18n.getMessage('What to improve, from the deterministic checks')}</h3>
+        <h3>2 · ${i18n.getMessage('Gaps to review, from the deterministic checks')}</h3>
         ${items.map(id => {
           const n = by.get(id);
           const a = this._readiness.assessments.get(id);
           return html`<details open><summary>${n.name}</summary>
-            ${a?.failed.length ? html`<ul>${a.failed.map(f => html`<li><b>${f.check.label()}</b>: ${f.detail}</li>`)}</ul>` : html`<p class="muted">${i18n.getMessage('No failed checks.')}</p>`}
+            ${a?.failed.length ? html`<ul>${a.failed.map(f => html`<li><b>${f.check.label()}</b>: ${f.detail}</li>`)}</ul>` : html`<p class="muted">${i18n.getMessage('No gaps found by the deterministic checks.')}</p>`}
             <div class="cmp"><div><b>${i18n.getMessage('Today')}</b><br>${n.shortDescription || html`<em>${i18n.getMessage('No short description')}</em>`}</div>
               <div class="after"><b>${i18n.getMessage('Proposed wording')}</b><br><cat-semantic-assess item-id=${id}></cat-semantic-assess></div></div></details>`;
         })}

@@ -95,7 +95,7 @@ export default class HomePage extends AIUXElement {
           ? html`<div class="rise rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm" role="status"><p class="font-mono text-xs uppercase tracking-wide text-text-secondary">${i18n.getMessage('AI readiness')}</p><p class="mt-2 text-sm text-text-secondary">${i18n.getMessage('Assessing items for conversational AI…')}</p></div>`
           : o.readiness == null
             ? html`<div class="rise rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm"><p class="font-mono text-xs uppercase tracking-wide text-text-secondary">${i18n.getMessage('AI readiness')}</p><p class="mt-2 text-sm text-text-secondary">${i18n.getMessage('Variable data could not be read, so this assessment is unavailable right now.')}</p></div>`
-            : card('ready', i18n.getMessage('AI readiness'), f(o.readiness), i18n.getMessage('of {0} active items fail at least one deterministic check for conversational use.', f(o.readinessActive)), i18n.getMessage('Investigate AI readiness'), 'ai-readiness')}
+            : card('ready', i18n.getMessage('AI readiness'), f(o.readiness), i18n.getMessage('of {0} active items have a potential gap found by deterministic checks. A prompt to review, not a verdict.', f(o.readinessActive)), i18n.getMessage('Investigate AI readiness'), 'ai-readiness')}
       </div>
     </section>`;
   }

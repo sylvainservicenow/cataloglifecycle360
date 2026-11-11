@@ -145,9 +145,9 @@ export function buildAiReadiness(model, variableStats) {
     id: 'ai-readiness',
     type: 'ai-readiness',
     dimension: 'ai-readiness',
-    title: i18n.getMessage('Items a conversational agent may struggle with'),
-    summary: i18n.getMessage('{0} of {1} active items fail at least one deterministic readiness check.', fmt(attention.length), fmt(active.length)),
-    why: i18n.getMessage('An agent picks and fills in catalog items from their names, descriptions and forms. Vague, duplicated or missing text makes it choose the wrong item or ask the user needless questions.'),
+    title: i18n.getMessage('Items with potential AI readiness gaps'),
+    summary: i18n.getMessage('{0} of {1} active items have at least one gap found by the deterministic checks.', fmt(attention.length), fmt(active.length)),
+    why: i18n.getMessage('An agent picks and fills in catalog items from their names, descriptions and forms. Gaps such as missing or duplicated text can lead it to pick the wrong item or ask needless questions. A gap is a reason to review an item, not a verdict that it is unsuitable for AI.'),
     evidence: {
       sources: [
         {table: 'sc_cat_item', fields: ['name', 'short_description', 'description', 'sys_class_name', 'active'], note: i18n.getMessage('Every readable item, active items assessed.')},
@@ -157,13 +157,13 @@ export function buildAiReadiness(model, variableStats) {
     },
     method: {
       classification: CLASSIFICATION.DETERMINISTIC,
-      description: i18n.getMessage('Objective checks on native fields. They find clear gaps; they do not judge whether the wording is good. That needs the semantic assessment, which is separate and labelled as such.'),
+      description: i18n.getMessage('Objective checks on native fields. They find clear gaps; they do not judge whether the wording is good. That is the semantic assessment, which is separate, labelled as AI, and only run on request.'),
       criteria: CHECKS.map(c => ({key: c.id, dimension: c.dimension, label: c.label(), rule: c.rule()}))
     },
     affectedIds: attention.map(n => n.id),
     severity: {
       level: severityFromShare(share, active.length),
-      rationale: i18n.getMessage('Rated from the share of active items with at least one failed check: 50% or more is high, 20% or more is medium, anything less is low. Each check counts once and none is weighted; this is not a readiness score.')
+      rationale: i18n.getMessage('Prevalence is the share of active items with at least one gap: 50% or more is high, 20% or more is medium, anything less is low. Each check counts once and none is weighted. This is not a readiness score and not a prediction of how an agent will behave.')
     },
     recommendedAction: {
       id: 'prepare-ai-readiness-improvements',
@@ -171,7 +171,7 @@ export function buildAiReadiness(model, variableStats) {
       summary: i18n.getMessage('Review the issues for chosen items and prepare better wording as proposals for human approval. Nothing is written to catalog records.')
     },
     nextSteps: [
-      i18n.getMessage('Open an item to see which checks it fails and why.'),
+      i18n.getMessage('Open an item to see which checks found a gap and why.'),
       i18n.getMessage('Run the semantic assessment for wording clarity (needs the AI capability).'),
       i18n.getMessage('Review proposed wording item by item.'),
       i18n.getMessage('Approve, then apply to catalog records in a later phase.')
