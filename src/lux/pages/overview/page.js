@@ -11,6 +11,7 @@ import {buildTaxonomy} from '../../lib/investigations/taxonomy.js';
 import {buildCsdm, loadServiceData} from '../../lib/investigations/csdm.js';
 import {OTTO_TOOLS, ottoContext} from '../../lib/otto.js';
 import '../../components/cat-universe.js';
+import '../../components/cat-appnav.js';
 
 @customElement('x-snc-catalogintel-overview-page')
 export default class OverviewPage extends withWidgetContext(AIUXElement) {
@@ -143,6 +144,7 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
     const f = n => new Intl.NumberFormat().format(n);
     return html`
       <div class="mx-auto flex max-w-7xl flex-col gap-6">
+        <cat-appnav current="overview"></cat-appnav>
         <section class="rise flex flex-col gap-3">
           <p class="font-mono text-xs uppercase tracking-wide text-primary-900">${i18n.getMessage('Catalog Intelligence 360')}</p>
           <h1 class="max-w-3xl break-words text-4xl font-bold text-text-primary">${i18n.getMessage('Your service catalog, as a living universe.')}</h1>

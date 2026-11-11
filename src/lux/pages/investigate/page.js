@@ -12,10 +12,12 @@ import {buildOverlap, KIND as OVERLAP_KIND} from '../../lib/investigations/overl
 import {buildTaxonomy, categoryCandidates, ISSUE as TAXONOMY_ISSUE} from '../../lib/investigations/taxonomy.js';
 import {buildCsdm, loadServiceData, offeringCandidates, resetServiceData} from '../../lib/investigations/csdm.js';
 import {OTTO_TOOLS, ottoContext} from '../../lib/otto.js';
+import {setAppState} from '../../lib/app-state.js';
 import '../../components/cat-universe.js';
 import '../../widgets/semantic-assess/index.js';
 import '../../widgets/catalog-transform/index.js';
 import '../../widgets/cat-workbench/index.js';
+import '../../components/cat-appnav.js';
 
 const ACCENT = '#F2812F';
 const SOFT = '#D5DEEA';
@@ -134,22 +136,115 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       min-width: 0;
       container-type: inline-size;
     }
+    .page {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
     .wrap {
       display: grid;
-      grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
+      grid-template-columns: minmax(300px, 38%) minmax(0, 1fr);
       gap: 14px;
-      height: calc(100dvh - 176px);
-      min-height: 560px;
+      height: calc(100dvh - 228px);
+      min-height: 540px;
     }
-    @container (max-width: 880px) {
+    @container (max-width: 940px) {
+      .wrap {
+        grid-template-columns: minmax(0, 42%) minmax(0, 1fr);
+      }
+    }
+    @container (max-width: 720px) {
       .wrap {
         grid-template-columns: minmax(0, 1fr);
         height: auto;
+      }
+      .focus {
+        max-height: none;
       }
       .stagecol {
         height: 70vh;
         min-height: 460px;
       }
+    }
+    .focus-body,
+    .inspector,
+    .sheet {
+      overflow-x: hidden;
+    }
+    .focus-body > * {
+      min-width: 0;
+    }
+    .target {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px 8px;
+      padding: 8px 12px;
+      border-radius: 0.9rem;
+      background: #eef4ff;
+      color: #1d3f85;
+      font-size: 0.85rem;
+    }
+    .target.empty {
+      background: rgba(3, 45, 66, 0.05);
+      color: #4d4c4a;
+    }
+    .target b {
+      overflow-wrap: anywhere;
+    }
+    .target .tl {
+      font-size: 0.7rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      opacity: 0.8;
+    }
+    .starts {
+      list-style: none;
+      margin: 4px 0 0;
+      padding: 0;
+      display: grid;
+      gap: 4px;
+    }
+    .starts button {
+      width: 100%;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 4px 10px;
+      align-items: center;
+      text-align: left;
+      padding: 7px 10px;
+      border: 1px solid rgba(3, 45, 66, 0.12);
+      border-radius: 0.8rem;
+      background: #fff;
+      font: inherit;
+      color: #032d42;
+      cursor: pointer;
+    }
+    .starts button:hover {
+      background: #f4f7fb;
+    }
+    .starts button[aria-pressed='true'] {
+      border-color: #2f6fed;
+      background: #eef4ff;
+      box-shadow: inset 3px 0 0 #2f6fed;
+    }
+    .starts .t {
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+    .starts small {
+      grid-column: 2;
+      color: #656462;
+    }
+    details.fold > summary {
+      cursor: pointer;
+      color: #656462;
+      font-size: 0.85rem;
+    }
+    .hint {
+      margin: 0;
+      font-size: 0.82rem;
+      color: #656462;
     }
     .card {
       background: rgba(255, 255, 255, 0.9);
@@ -993,6 +1088,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   }
 
   _pushContext() {
+    setAppState({investigation: this._active, itemId: this._item, categoryId: this._cat});
     ottoContext(this, {page: 'Investigate', investigation: this._active, itemId: this._item, categoryId: this._cat}).then(c => {
       const d = this._current();
       const group = this._item && this._active === 'overlap' ? this._disc.overlap?.groupOf.get(this._item) : null;
@@ -1019,7 +1115,11 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     await this._ensure(d);
     const disc = this._current();
     if (!disc) return {success: false, error: this._discError || 'The investigation could not be built.'};
-    if (workspace && this._item) await this._openPrepare();
+    let workspaceError = '';
+    if (workspace && this._item) {
+      await this._openPrepare();
+      workspaceError = this._wb?.error || '';
+    }
     await this.updateComplete;
     const n = this._item ? nodeIndex(this._model).get(this._item) : null;
     return {
@@ -1028,8 +1128,11 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       findingsInScope: this._scopeIds().length,
       summary: disc.summary,
       selectedItem: n ? {item_id: n.id, name: n.name} : null,
-      workspaceOpen: !!(workspace && this._item),
-      message: workspace ? 'The review workspace is open. The person generates the proposal and confirms any change.' : 'The investigation is open with real findings.'
+      workspaceOpen: !!(workspace && this._item && !workspaceError),
+      ...(workspaceError ? {workspaceError} : {}),
+      message: workspaceError
+        ? `The investigation is open, but the review workspace could not be prepared: ${workspaceError}`
+        : workspace ? 'The review workspace is open. The person generates the proposal and confirms any change.' : 'The investigation is open with real findings.'
     };
   }
 
@@ -1213,6 +1316,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       const entry = this._disc.form?.byItem.get(id);
       const setUsage = this._disc.form?.setUsage;
       const flagged = (entry?.findings || []).slice(0, 12);
+      if (!flagged.length) throw new Error('This item has no flagged questions, so there is nothing to improve on its form.');
       const choiceTypes = flagged.filter(f => ['3', '5'].includes(f.variable.type)).map(f => f.variable.id);
       const choices = choiceTypes.length ? await loadChoices(choiceTypes).catch(() => new Map()) : new Map();
       return {item: await base(n), variables: flagged.map(f => ({id: f.variable.id, type: f.variable.type, mandatory: f.variable.mandatory, name: f.variable.name, label: f.variable.label, help: f.variable.help, hint: f.variable.hint, issues: f.issues.map(i => i.text), choices: (choices.get(f.variable.id) || []).map(c => c.text), shared: f.shared ? setUsage?.get(f.variable.set) || f.shared : 0}))};
@@ -1277,6 +1381,8 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     }
     const {markers, legend} = this._markers();
     return html`
+      <div class="page">
+      <cat-appnav current="investigate"></cat-appnav>
       <div class="wrap" role="group" aria-label=${i18n.getMessage('Investigation workspace')} @keydown=${this._onKey}>
         ${this._renderFocus()}
         <div class="stagecol">
@@ -1288,6 +1394,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
           </div>
           ${this._renderDrawer()}
         </div>
+      </div>
       </div>`;
   }
 
@@ -1310,6 +1417,51 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     return ov.groups.filter(g => g.ids.some(id => scope.has(id)));
   }
 
+  /** What the primary action will act on, so it never opens an empty or ambiguous workspace. */
+  _primary(d) {
+    const n = this._item ? nodeIndex(this._model).get(this._item) : null;
+    const label = d.recommendedAction.label;
+    const need = i18n.getMessage('Select an item first: choose one from the list above or click a dot in the universe.');
+    if (d.id === 'overlap') {
+      const g = n ? this._disc.overlap?.groupOf.get(n.id) : null;
+      return g
+        ? {label: i18n.getMessage('Compare these {0} items', fmt(g.ids.length)), hint: i18n.getMessage('Compares “{0}” with {1} similar item(s) using the AI. Nothing is changed.', n.name, fmt(g.ids.length - 1))}
+        : {label, disabled: true, hint: n ? i18n.getMessage('“{0}” is not in a candidate group. Choose a group from the list above.', n.name) : i18n.getMessage('Choose a candidate group from the list above, or click a coloured dot in the universe.')};
+    }
+    if (!n) return {label, disabled: true, hint: need};
+    if (d.id === 'form-intelligence') {
+      const e = this._disc.form?.byItem.get(n.id);
+      return e?.findings.length
+        ? {label, hint: i18n.getMessage('Target: “{0}”, {1} question(s) to review.', n.name, fmt(e.findings.length))}
+        : {label, disabled: true, hint: i18n.getMessage('“{0}” has no flagged questions. Choose an item from the list above.', n.name)};
+    }
+    return {label, hint: i18n.getMessage('Target: “{0}”.', n.name)};
+  }
+
+  /** The items to look at first, so the next step is always a click away. */
+  _startItems(d, scope) {
+    const by = nodeIndex(this._model);
+    let ids = scope;
+    if (d.id === 'form-intelligence') ids = [...scope].sort((a, b) => (this._disc.form.byItem.get(b)?.findings.length || 0) - (this._disc.form.byItem.get(a)?.findings.length || 0));
+    return ids.slice(0, 6).map(id => {
+      const n = by.get(id);
+      let detail = '';
+      if (d.id === 'form-intelligence') detail = i18n.getMessage('{0} question(s) to review', fmt(this._disc.form.byItem.get(id)?.findings.length || 0));
+      else if (d.id === 'taxonomy') detail = (this._disc.taxonomy.findings.get(id) || []).map(f => TAXONOMY_ISSUE[f.kind]()).join(' · ');
+      else if (d.id === 'csdm-alignment') detail = i18n.getMessage('May align with: {0}', this._disc.csdm.candidates.get(id)?.[0]?.offering.name || '');
+      else if (d.id === 'ai-readiness') detail = i18n.getMessage('{0} gap(s)', fmt(failedCount(this._readiness, id)));
+      return {id, name: n.name, cls: classLabel(n.cls), detail};
+    });
+  }
+
+  _renderTarget() {
+    const n = this._item ? nodeIndex(this._model).get(this._item) : null;
+    return n
+      ? html`<div class="target" role="group" aria-label=${i18n.getMessage('Selected item')}><span class="tl">${i18n.getMessage('Selected item')}</span><b>${n.name}</b><span>${classLabel(n.cls)}</span>
+          <button class="chip" @click=${() => this._setItem(null)} aria-label=${i18n.getMessage('Clear the selected item')}>✕</button></div>`
+      : html`<div class="target empty" role="status">${i18n.getMessage('No item selected. Pick one from the list below or click a dot in the universe.')}</div>`;
+  }
+
   _renderDiscovery(d) {
     const scope = this._scopeIds();
     const all = this._scopeIds(false);
@@ -1320,6 +1472,8 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     const types = classBreakdown(this._model, d.affectedIds);
     const by = nodeIndex(this._model);
     const groups = d.id === 'overlap' ? this._overlapGroupsInScope() : [];
+    const sel = this._item && d.id === 'overlap' ? this._disc.overlap?.groupOf.get(this._item) : null;
+    const primary = this._primary(d);
     return html`
       <div class="focus-body">
       <div class="badges">
@@ -1331,35 +1485,41 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       <div class="count"><b>${fmt(scope.length)}</b><span>${this._cat || this._cls ? i18n.getMessage('in this scope, of {0} affected', fmt(d.affectedIds.length)) : i18n.getMessage('of {0} active items', fmt(total))}</span></div>
       ${this._impact && this._impact.before !== this._impact.after ? html`<p class="impact" role="status">✓ ${i18n.getMessage('Counts updated after “{0}” was saved and verified: {1} → {2} items flagged.', this._impact.name || '', fmt(this._impact.before), fmt(this._impact.after))}</p>` : nothing}
       <p>${d.summary}</p>
-      <p class="muted">${d.why}</p>
       ${d.id === 'ai-readiness' && this._readinessError ? html`<div class="note" role="status">${i18n.getMessage('Variable counts could not be read ({0}). The form check is shown as pending, not as passed.', this._readinessError)}</div>` : nothing}
-      <div class="scope" role="group" aria-label=${i18n.getMessage('Narrow the investigation')}>
-        ${this._cat ? html`<button class="chip" @click=${() => this._setCat(null)} aria-label=${i18n.getMessage('Clear category {0}', this._model.clusters.find(c => c.id === this._cat)?.title)}>${this._model.clusters.find(c => c.id === this._cat)?.title} ✕</button>` : nothing}
-        <label class="vh" for="cls">${i18n.getMessage('Item type')}</label>
-        <select id="cls" class="chip" .value=${this._cls} @change=${e => this._setCls(e.target.value)}>
-          <option value="">${i18n.getMessage('All item types')}</option>
-          ${types.map(([c, n]) => html`<option value=${c} ?selected=${this._cls === c}>${classLabel(c)} · ${fmt(n)}</option>`)}
-        </select>
-        ${this._picked.size ? html`<button class="chip" @click=${() => (this._picked = new Set())}>${i18n.getMessage('{0} chosen', fmt(this._picked.size))} ✕</button>` : nothing}
-      </div>
+      ${this._renderTarget()}
       ${d.id === 'overlap' ? html`<div>
           <div class="muted" id="grp">${i18n.getMessage('Candidate groups in scope')}</div>
-          <ul class="recs" aria-labelledby="grp">${groups.slice(0, 6).map(g => html`<li class="rec"><span class="dot" style="background:${KIND_COLOR[g.kind]}" aria-hidden="true"></span>
-            <button class="name" aria-pressed=${g.ids.includes(this._item)} @click=${() => this._setItem(g.ids[0])}>${by.get(g.ids[0]).name}<small> · ${i18n.getMessage('{0} items', fmt(g.ids.length))} · ${OVERLAP_KIND[g.kind].label()}</small></button><span></span></li>`)}</ul>
-          ${groups.length > 6 ? html`<p class="muted">${i18n.getMessage('and {0} more groups. Focus a category to narrow them.', fmt(groups.length - 6))}</p>` : nothing}</div>` : nothing}
+          <ul class="starts" aria-labelledby="grp">${groups.slice(0, 6).map(g => html`<li><button aria-pressed=${sel?.id === g.id} @click=${() => this._setItem(g.ids[0])}>
+            <span class="dot" style="background:${KIND_COLOR[g.kind]}" aria-hidden="true"></span><span class="t">${by.get(g.ids[0]).name}</span>
+            <small>${i18n.getMessage('{0} items', fmt(g.ids.length))} · ${OVERLAP_KIND[g.kind].label()}</small></button></li>`)}</ul>
+          ${groups.length > 6 ? html`<p class="hint">${i18n.getMessage('and {0} more groups. Focus a category to narrow them.', fmt(groups.length - 6))}</p>` : nothing}</div>`
+        : html`<div>
+          <div class="muted" id="starts">${d.id === 'form-intelligence' ? i18n.getMessage('Forms to review first') : i18n.getMessage('Items to look at first')}</div>
+          <ul class="starts" aria-labelledby="starts">${this._startItems(d, scope).map(x => html`<li><button aria-pressed=${this._item === x.id} @click=${() => this._setItem(x.id)}>
+            <span class="t" style="grid-column:1 / -1">${x.name}</span><small style="grid-column:1 / -1">${x.cls}${x.detail ? ` · ${x.detail}` : ''}</small></button></li>`)}</ul>
+          ${scope.length > 6 ? html`<p class="hint">${i18n.getMessage('{0} more in the Records tab below.', fmt(scope.length - 6))}</p>` : nothing}</div>`}
       ${d.id === 'taxonomy' ? this._renderTaxonomyExtras(d) : nothing}
-      <div>
-        <div class="muted" id="dist">${i18n.getMessage('Where it is, by category')}</div>
-        <div class="bars" role="group" aria-labelledby="dist">
+      <details class="fold">
+        <summary>${i18n.getMessage('Narrow by category or item type')}</summary>
+        <div class="scope" role="group" aria-label=${i18n.getMessage('Narrow the investigation')}>
+          ${this._cat ? html`<button class="chip" @click=${() => this._setCat(null)} aria-label=${i18n.getMessage('Clear category {0}', this._model.clusters.find(c => c.id === this._cat)?.title)}>${this._model.clusters.find(c => c.id === this._cat)?.title} ✕</button>` : nothing}
+          <label class="vh" for="cls">${i18n.getMessage('Item type')}</label>
+          <select id="cls" class="chip" .value=${this._cls} @change=${e => this._setCls(e.target.value)}>
+            <option value="">${i18n.getMessage('All item types')}</option>
+            ${types.map(([c, n]) => html`<option value=${c} ?selected=${this._cls === c}>${classLabel(c)} · ${fmt(n)}</option>`)}
+          </select>
+          ${this._picked.size ? html`<button class="chip" @click=${() => (this._picked = new Set())}>${i18n.getMessage('{0} chosen', fmt(this._picked.size))} ✕</button>` : nothing}
+        </div>
+        <div class="bars" role="group" aria-label=${i18n.getMessage('Where it is, by category')}>
           ${topCats.map(c => html`<button class="bar" aria-pressed=${this._cat === c.id} @click=${() => this._setCat(this._cat === c.id ? null : c.id)}>
             <span>${c.title}</span><span>${fmt(c.count)} / ${fmt(c.of)}</span><div class="track"><div class="fill" style="width:${(100 * c.count) / maxCount}%"></div></div></button>`)}
         </div>
         ${dist.length > 4 ? html`<button class="link" @click=${() => (this._allCats = !this._allCats)}>${this._allCats ? i18n.getMessage('Show fewer') : i18n.getMessage('Show all {0} categories', fmt(dist.length))}</button>` : nothing}
-      </div>
+      </details>
       </div>
       <div class="focus-foot">
-        <button class="primary" ?disabled=${!scope.length} @click=${this._openPrepare}>${d.recommendedAction.label}</button>
-        <p class="muted">${d.recommendedAction.summary}</p>
+        <button class="primary" ?disabled=${primary.disabled || !scope.length} @click=${this._openPrepare}>${primary.label}</button>
+        <p class="hint">${primary.hint}</p>
         <button class="link" aria-expanded=${this._drawer} @click=${() => (this._drawer = !this._drawer)}>${this._drawer ? i18n.getMessage('Hide the reasoning') : i18n.getMessage('Why this finding?')}</button>
       </div>`;
   }

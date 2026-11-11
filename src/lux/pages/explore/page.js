@@ -4,7 +4,9 @@ import {AIUXElement, withWidgetContext} from '@servicenow/aiux/aiux-components-c
 import {navigate} from '@servicenow/aiux/aiux-client';
 import {i18n} from '@servicenow/aiux/aiux-services';
 import {OTTO_TOOLS, ottoContext} from '../../lib/otto.js';
+import {setAppState} from '../../lib/app-state.js';
 import '../../components/cat-universe.js';
+import '../../components/cat-appnav.js';
 
 @customElement('x-snc-catalogintel-explore-page')
 export default class ExplorePage extends withWidgetContext(AIUXElement) {
@@ -23,6 +25,13 @@ export default class ExplorePage extends withWidgetContext(AIUXElement) {
       /* leaves room for the platform's Otto input bar below the universe */
       height: calc(100dvh - 176px);
       min-height: 480px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    cat-universe {
+      flex: 1;
+      min-height: 0;
     }
   `;
 
@@ -41,6 +50,7 @@ export default class ExplorePage extends withWidgetContext(AIUXElement) {
 
   /** Tell Otto where the person is, using stable sys_ids only. */
   _pushOtto() {
+    setAppState({itemId: this._sel.itemId, categoryId: this._sel.categoryId});
     ottoContext(this, {page: 'Explore', itemId: this._sel.itemId, categoryId: this._sel.categoryId, lens: this._sel.lens}).then(c => this.setAiContext(c));
   }
 
@@ -98,7 +108,8 @@ export default class ExplorePage extends withWidgetContext(AIUXElement) {
 
   render() {
     return html`
-      <cat-universe class="h-full w-full" @cat-universe:investigate=${this._investigate} @cat-universe:select=${this._onSelect} @cat-universe:focus=${this._onFocus} @cat-universe:lens=${this._onLens}></cat-universe>
+      <cat-appnav current="explore"></cat-appnav>
+      <cat-universe class="w-full" @cat-universe:investigate=${this._investigate} @cat-universe:select=${this._onSelect} @cat-universe:focus=${this._onFocus} @cat-universe:lens=${this._onLens}></cat-universe>
     `;
   }
 }

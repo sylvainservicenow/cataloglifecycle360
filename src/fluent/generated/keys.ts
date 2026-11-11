@@ -14,9 +14,14 @@ declare global {
                         id: 'dec7c07655dbeffef6641882d8024609'
                         deleted: true
                     }
+                    'aiux-dependency|cat-appnav.js': {
+                        table: 'sys_aix_dependency'
+                        id: 'c885bd45a672edc344684a4b24e9f6df'
+                    }
                     'aiux-dependency|cat-universe.js': {
                         table: 'sys_aix_dependency'
                         id: '526237fee88f802b09b228d479cc359e'
+                        deleted: true
                     }
                     'aiux-dependency|catalog-data.js': {
                         table: 'sys_aix_dependency'
@@ -76,9 +81,14 @@ declare global {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: '18739410c0325ac7e1a329b5854e762e'
                     }
+                    'aiux-m2m-widget-dep|x-snc-catalogintel-explore-page|cat-appnav.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '3828e6e8377f21430e4c73440bcd6c02'
+                    }
                     'aiux-m2m-widget-dep|x-snc-catalogintel-explore-page|cat-universe.js': {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: '633f4666bde70b9544bd181839dcf3d8'
+                        deleted: true
                     }
                     'aiux-m2m-widget-dep|x-snc-catalogintel-home-page|ai-readiness.js': {
                         table: 'sys_aix_m2m_widget_dependency'
@@ -100,17 +110,27 @@ declare global {
                         id: '89a9fa26652eb3afa7efb1ad979d00a6'
                         deleted: true
                     }
+                    'aiux-m2m-widget-dep|x-snc-catalogintel-investigate-page|cat-appnav.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '859536050636fb62e252cd5ac2bb0fec'
+                    }
                     'aiux-m2m-widget-dep|x-snc-catalogintel-investigate-page|cat-universe.js': {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: 'c30ae18fa7fcdc7697fd96db830c3fda'
+                        deleted: true
                     }
                     'aiux-m2m-widget-dep|x-snc-catalogintel-investigate-page|csdm.js': {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: 'fe5d35cf46ab8b436403be365c60855a'
                     }
+                    'aiux-m2m-widget-dep|x-snc-catalogintel-overview-page|cat-appnav.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '607f15a75cbd455bc5f7115a247aa7bc'
+                    }
                     'aiux-m2m-widget-dep|x-snc-catalogintel-overview-page|cat-universe.js': {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: '3895343b713350ca4b7fff1c5f569e2c'
+                        deleted: true
                     }
                     'aiux-m2m-widget-dep|x-snc-catalogintel-overview-page|csdm.js': {
                         table: 'sys_aix_m2m_widget_dependency'
