@@ -1,13 +1,11 @@
 /* global GlideRecordSecure, GlideDateTime, gs, sn_one_extend */
 /**
- * Transform actions for ONE catalog item: read, generate, apply.
+ * Transform actions for ONE catalog item: read and generate. (Applying is done by the
+ * client through the Table REST API as the signed-in user; see index.js.)
  *
  *  read      current native values (the user's own read access)
  *  generate  one Generic Prompt request returning proposals for the requested
  *            fields only. Proposals are suggestions; nothing is written.
- *  apply     writes ONLY the approved fields, after: explicit confirmation,
- *            client-verified privilege, a fresh re-read, and a stale check.
- *            It then re-reads the record and returns what was actually saved.
  *
  * All record access goes through GlideRecordSecure, so the signed-in user's
  * ACLs apply. Nothing here uses elevated access, and no other field is touched.
@@ -124,91 +122,6 @@ export default function server(data, _options, input) {
       gs.error('catalog-transform generate: ' + e.message);
       fail('The AI capability could not produce proposals: ' + e.message);
     }
-    return;
-  }
-
-  if (action === 'apply') {
-    // Hard gates. The client verifies the privilege before calling; this refuses if it did not.
-    if (input.confirmed !== true) return fail('Explicit confirmation is required before anything is changed.');
-    if (input.privilegeVerified !== true) return fail('The permission to update catalog items has not been verified, so nothing was changed.');
-    var changes = input.changes || {};
-    var keys = Object.keys(changes).filter(function (k) {
-      return k === 'shortDescription' || k === 'description';
-    });
-    if (!keys.length) return fail('There are no approved changes to apply.');
-    var base = input.baseline || {};
-    // Stale check against a fresh read: reject if the record moved since the proposal.
-    var stale =
-      item.updated !== String(base.updated || '') ||
-      (keys.indexOf('shortDescription') >= 0 && item.short !== String(base.short || '')) ||
-      (keys.indexOf('description') >= 0 && item.description !== String(base.description || ''));
-    if (stale) {
-      data.stale = true;
-      data.current = {short: item.short, description: item.description, updated: item.updated};
-      return fail('The item changed after these proposals were generated. Nothing was applied. Generate again to review against the current values.', 'stale');
-    }
-    for (var k = 0; k < keys.length; k++) {
-      var v = String(changes[keys[k]] || '').trim();
-      var max = keys[k] === 'shortDescription' ? SHORT_MAX : DESC_MAX;
-      if (!v || v.length > max) return fail('The wording for ' + keys[k] + ' is empty or longer than ' + max + ' characters.');
-    }
-    var gr = new GlideRecordSecure('sc_cat_item');
-    if (!gr.get(itemId)) return fail('The item cannot be updated by you.');
-    for (var j = 0; j < keys.length; j++) {
-      gr.setValue(keys[j] === 'shortDescription' ? 'short_description' : 'description', String(changes[keys[j]]).trim());
-    }
-    var saved = null;
-    var thrown = '';
-    try {
-      saved = gr.update();
-    } catch (e) {
-      thrown = String((e && e.message) || e);
-    }
-    if (!saved) {
-      var lastError = '';
-      var aborted = false;
-      try {
-        lastError = String(gr.getLastErrorMessage() || '');
-      } catch (e2) {
-        lastError = '';
-      }
-      try {
-        aborted = gr.isActionAborted() === true;
-      } catch (e3) {
-        aborted = false;
-      }
-      var errText = (thrown + ' ' + lastError).toLowerCase();
-      var kind = 'failed';
-      if (/cross.?scope|privilege|restricted caller|not allowed to (write|update)|application access|scope/.test(errText)) kind = 'privilege';
-      else if (/acl|security|permission|denied|not authorized|insufficient/.test(errText)) kind = 'acl';
-      else if (aborted) kind = 'aborted';
-      var unchanged = true;
-      var reread = readItem(itemId);
-      if (reread) unchanged = reread.short === item.short && reread.description === item.description && reread.updated === item.updated;
-      var messages = {
-        privilege: 'The update was blocked by a cross-scope privilege. Nothing was changed.',
-        acl: 'Your account is not permitted to change this field (access control). Nothing was changed.',
-        aborted: 'A rule on the catalog item stopped the update. Nothing was changed.',
-        failed: 'The platform did not accept the update. Nothing was changed.'
-      };
-      return fail(messages[kind] + (unchanged ? '' : ' WARNING: the record changed; review it.'), kind, {
-        recordClass: item.cls,
-        threw: thrown,
-        lastError: lastError,
-        actionAborted: aborted,
-        recordUnchanged: unchanged
-      });
-    }
-    // Verify from the database, not from what we sent.
-    var after = readItem(itemId);
-    if (!after) return fail('The item could not be re-read after the update.');
-    var persisted = {short: after.short, description: after.description, updated: after.updated};
-    var ok = true;
-    if (keys.indexOf('shortDescription') >= 0 && after.short !== String(changes.shortDescription).trim()) ok = false;
-    if (keys.indexOf('description') >= 0 && after.description !== String(changes.description).trim()) ok = false;
-    data.applied = keys;
-    data.persisted = persisted;
-    data.verified = ok;
     return;
   }
 

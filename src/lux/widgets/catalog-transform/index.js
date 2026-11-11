@@ -3,16 +3,16 @@ import {customElement} from 'lit/decorators.js';
 import {AIUXWidgetElement, decorators} from '@servicenow/aiux/aiux-components-core';
 import {navigate} from '@servicenow/aiux/aiux-client';
 import {i18n} from '@servicenow/aiux/aiux-services';
-import {plain} from '../../lib/catalog-data.js';
-import {checkWritePrivilege} from '../../lib/capabilities.js';
+import {getJson, plain} from '../../lib/catalog-data.js';
+import {aiuxFetch} from '@servicenow/aiux/aiux-components-core';
 import {assessmentCache} from '../semantic-assess/index.js';
 
 const {discoverable, name, description, bestFor, server} = decorators;
 
 /** Which deterministic checks concern which field. */
 const FIELDS = [
-  {key: 'shortDescription', raw: 'short', label: () => i18n.getMessage('Short description'), checks: ['short-present', 'short-informative'], max: 200},
-  {key: 'description', raw: 'description', label: () => i18n.getMessage('Description'), checks: ['desc-present', 'desc-substantive'], max: 8000}
+  {key: 'shortDescription', raw: 'short', apiName: 'short_description', label: () => i18n.getMessage('Short description'), checks: ['short-present', 'short-informative'], max: 200},
+  {key: 'description', raw: 'description', apiName: 'description', label: () => i18n.getMessage('Description'), checks: ['desc-present', 'desc-substantive'], max: 8000}
 ];
 
 @customElement('cat-transform')
@@ -32,7 +32,6 @@ export default class CatTransform extends AIUXWidgetElement {
     _edit: {state: true}, // {field: edited text}
     _decision: {state: true}, // {field: 'accept'|'reject'}
     _confirm: {state: true},
-    _priv: {state: true},
     _error: {state: true},
     _errKind: {state: true},
     _errDetail: {state: true},
@@ -380,7 +379,6 @@ export default class CatTransform extends AIUXWidgetElement {
     this._edit = {};
     this._decision = {};
     this._confirm = false;
-    this._priv = null;
     this._error = '';
     this._errKind = '';
     this._errDetail = null;
@@ -411,7 +409,6 @@ export default class CatTransform extends AIUXWidgetElement {
     this._gapsBefore = FIELDS.flatMap(f => this._fieldGaps(f)).map(g => g.check.id);
     this._pick = Object.fromEntries(FIELDS.map(f => [f.key, this._fieldGaps(f).length > 0]));
     this._phase = 'ready';
-    checkWritePrivilege().then(p => (this._priv = p));
   }
 
   async _call(input) {
@@ -457,16 +454,52 @@ export default class CatTransform extends AIUXWidgetElement {
     return this._changes().find(c => c.to.length > c.field.max);
   }
 
+  /**
+   * Apply through the standard Table REST API as the signed-in user: native ACLs
+   * decide, and no cross-scope privilege is involved. Order: fresh read and stale
+   * check, update only the approved fields, read back from the database.
+   */
   async _apply() {
     const changes = this._changes();
+    if (!changes.length || this._confirm !== true) return;
     this._phase = 'applying';
-    const body = Object.fromEntries(changes.map(c => [c.field.key, c.to]));
-    const r = await this._call({action: 'apply', itemId: this.itemId, changes: body, baseline: this._gen.baseline, confirmed: this._confirm === true, privilegeVerified: this._priv?.state === 'allowed'});
-    if (!r) return;
-    this._result = r;
-    this._phase = 'done';
-    // The page refreshes its cached model from what the database now holds.
-    this.dispatchEvent(new CustomEvent('cat-transform:applied', {detail: {itemId: this.itemId, persisted: r.persisted, verified: r.verified}, bubbles: true, composed: true}));
+    const id = this.itemId;
+    const url = `/api/now/table/sc_cat_item/${id}`;
+    const fields = 'sys_id,short_description,description,sys_updated_on';
+    const fail = (kind, message, detail) => {
+      this._errKind = kind;
+      this._error = message;
+      this._errDetail = detail || null;
+      this._stale = kind === 'stale';
+      this._phase = 'error';
+    };
+    try {
+      // 1. fresh read, stale check
+      const fresh = (await getJson(`${url}?sysparm_fields=${fields}&sysparm_exclude_reference_link=true`)).rows;
+      const cur = Array.isArray(fresh) ? fresh[0] : fresh;
+      const b = this._gen.baseline;
+      const moved = !cur || String(cur.sys_updated_on || '') !== String(b.updated || '') || changes.some(c => String(cur[c.field.apiName] || '') !== String(b[c.field.raw] || ''));
+      if (moved) return fail('stale', i18n.getMessage('The item changed after these proposals were generated. Nothing was applied. Reload the current values and generate again.'));
+      // 2. write only the approved fields
+      const body = Object.fromEntries(changes.map(c => [c.field.apiName, c.to]));
+      const res = await aiuxFetch(url, {method: 'PATCH', headers: {Accept: 'application/json', 'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        const msg = (() => { try { return JSON.parse(text)?.error?.message || ''; } catch { return ''; } })();
+        const kind = res.status === 401 || res.status === 403 ? 'acl' : /abort|business rule/i.test(msg) ? 'aborted' : 'failed';
+        const title = {acl: i18n.getMessage('Your account is not permitted to change this item (access control). Nothing was changed.'), aborted: i18n.getMessage('A rule on the catalog item stopped the update. Nothing was changed.'), failed: i18n.getMessage('The platform did not accept the update. Nothing was changed.')}[kind];
+        return fail(kind, title, {recordClass: this._item.cls, status: res.status, lastError: msg, recordUnchanged: true});
+      }
+      // 3. read back from the database; success is only claimed if it matches
+      const back = (await getJson(`${url}?sysparm_fields=${fields}&sysparm_exclude_reference_link=true`)).rows;
+      const after = Array.isArray(back) ? back[0] : back;
+      const verified = changes.every(c => String(after[c.field.apiName] || '') === c.to);
+      this._result = {applied: changes.map(c => c.field.key), persisted: {short: after.short_description, description: after.description, updated: after.sys_updated_on}, verified};
+      this._phase = 'done';
+      this.dispatchEvent(new CustomEvent('cat-transform:applied', {detail: {itemId: id, persisted: this._result.persisted, verified}, bubbles: true, composed: true}));
+    } catch (e) {
+      fail('failed', i18n.getMessage('The update could not be completed. Nothing was reported as applied.'), {lastError: e?.message || ''});
+    }
   }
 
   /* ---------- render ---------- */
@@ -490,7 +523,7 @@ export default class CatTransform extends AIUXWidgetElement {
         return html`<p role="status"><span class="spin"></span>${i18n.getMessage('Reading the current record…')}</p>`;
       case 'error':
         return html`<div class="note bad" role="alert"><b>${this._kindTitle()}</b><br>${this._error}
-          ${this._errKind === 'privilege' ? html`<ul><li>${i18n.getMessage('Needed: Write on table sc_cat_item and Execute API GlideRecord.setValue / GlideRecord.update for x_snc_catalogintel.')}</li><li>${i18n.getMessage('An administrator must allow any that are missing; this app never grants them.')}</li></ul>` : nothing}
+          
           ${this._errDetail ? html`<details><summary>${i18n.getMessage('Technical detail')}</summary><p class="muted">${i18n.getMessage('Record class')}: ${this._errDetail.recordClass} · ${i18n.getMessage('record unchanged')}: ${String(this._errDetail.recordUnchanged)}${this._errDetail.lastError ? ' · ' + this._errDetail.lastError : ''}${this._errDetail.threw ? ' · ' + this._errDetail.threw : ''}${this._errDetail.actionAborted ? ' · ' + i18n.getMessage('aborted by a rule') : ''}</p></details>` : nothing}</div>
           <div class="actions">${this._stale ? html`<button class="ghost" @click=${() => this._open()}>${i18n.getMessage('Reload current values')}</button>` : html`<button class="ghost" @click=${() => this._open()}>${i18n.getMessage('Start again')}</button>`}</div>`;
       case 'ready':
@@ -572,30 +605,18 @@ export default class CatTransform extends AIUXWidgetElement {
   }
 
   _renderApproval(changes, bad) {
-    const priv = this._priv;
-    const blocked = !priv || priv.state !== 'allowed';
+    const blocked = false;
     return html`<section class="field" aria-label=${i18n.getMessage('Approval')}>
       <h3>${i18n.getMessage('Changes awaiting your approval')}</h3>
       ${changes.length ? html`<div class="diff">${changes.map(c => html`<div><b>${c.field.label()}</b><br><del>${c.from || i18n.getMessage('Not provided')}</del><br><ins>${c.to}</ins></div>`)}</div>`
         : html`<p class="muted">${i18n.getMessage('Nothing is selected to change. Accept and edit a proposal above.')}</p>`}
       ${bad ? html`<div class="note bad" role="alert">${i18n.getMessage('{0} is longer than its {1}-character limit. Shorten it to continue.', bad.field.label(), String(bad.field.max))}</div>` : nothing}
-      ${blocked ? this._renderPrivilege(priv) : nothing}
       <label class="check"><input type="checkbox" .checked=${this._confirm} ?disabled=${!changes.length || blocked} @change=${e => (this._confirm = e.target.checked)}>
         <span>${i18n.getMessage('I confirm I want these exact changes saved to this catalog item.')}</span></label>
       <div class="actions"><button class="primary" ?disabled=${!changes.length || !this._confirm || blocked || !!bad} @click=${this._apply}>${i18n.getMessage('Apply approved changes')}</button>
         <button class="ghost" @click=${() => this._open()}>${i18n.getMessage('Start over')}</button></div>
-      <p class="muted">${i18n.getMessage('Before saving, the item is read again; if it changed since these proposals were made, nothing is applied.')}</p>
+      <p class="muted">${i18n.getMessage('Saved with your own account, so your access controls apply. Before saving, the item is read again; if it changed since these proposals were made, nothing is applied.')}</p>
     </section>`;
-  }
-
-  _renderPrivilege(priv) {
-    if (!priv) return html`<p class="muted" role="status">${i18n.getMessage('Checking whether this app may update catalog items…')}</p>`;
-    const n = priv.need;
-    return html`<div class="note bad" role="status"><b>${i18n.getMessage('Applying is blocked: permission missing')}</b><br>
-      ${priv.state === 'unknown' ? i18n.getMessage('The permission could not be checked ({0}), so nothing can be applied.', priv.error || '') : i18n.getMessage('This app has no allowed cross-scope privilege to change catalog items.')}
-      <ul><li>${i18n.getMessage('Needed: {0} → {1}, {2} “{3}”, operation {4}', n.sourceScope, n.targetScope, n.type, n.name, n.operation)}</li>
-        <li>${i18n.getMessage('An administrator must review and allow it. This app never requests or grants it by itself.')}</li></ul>
-      ${i18n.getMessage('You can still generate, edit and review proposals.')}</div>`;
   }
 
   _renderDone() {
