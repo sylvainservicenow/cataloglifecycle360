@@ -125,6 +125,10 @@ declare global {
                         table: 'sys_aix_widget'
                         id: '4317ecac5de39dea97460f71d867d582'
                     }
+                    'aiux-widget|cat-transform': {
+                        table: 'sys_aix_widget'
+                        id: '5445fa2af9a64bcb87e5e7633c5a124b'
+                    }
                     bom_json: {
                         table: 'sys_module'
                         id: 'a6ecdb490f144780868d34ace29c05f0'

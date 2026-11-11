@@ -36,3 +36,20 @@ export async function checkCapability(key) {
     return {key, name: cap.name, state: 'unknown', exists: null, definitions: null, verification: VERIFICATION[key], error: e.message};
   }
 }
+
+/**
+ * Can this app write catalog items? Writing another scope's table needs an
+ * allowed cross-scope privilege. This only READS the privilege records (as the
+ * signed-in user); it never requests or creates one. Unknown counts as blocked.
+ */
+export async function checkWritePrivilege() {
+  const need = {sourceScope: 'x_snc_catalogintel', targetScope: 'global', type: 'Table', name: 'sc_cat_item', operation: 'Write'};
+  try {
+    const q = 'source_scope.scope=x_snc_catalogintel^target_name=sc_cat_item^operation=write^status=allowed';
+    const p = new URLSearchParams({sysparm_query: q, sysparm_fields: 'sys_id', sysparm_limit: '1', sysparm_exclude_reference_link: 'true'});
+    const {rows} = await getJson(`/api/now/table/sys_scope_privilege?${p}`);
+    return {state: rows.length ? 'allowed' : 'missing', need, error: null};
+  } catch (e) {
+    return {state: 'unknown', need, error: e.message};
+  }
+}

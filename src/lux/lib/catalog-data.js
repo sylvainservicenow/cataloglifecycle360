@@ -440,3 +440,25 @@ async function buildItemVariables(itemId) {
     }))
     .sort((a, b) => a.order - b.order);
 }
+
+/**
+ * After an item was updated and re-read from the database, bring the in-memory
+ * model in line with what was actually persisted, so every view agrees.
+ */
+export function applyPersisted(model, itemId, persisted) {
+  const n = model.nodes.find(x => x.id === itemId);
+  if (!n) return null;
+  const short = plain(persisted.short);
+  const desc = plain(persisted.description);
+  n.shortDescription = short;
+  n.descLen = desc.length;
+  n.descWords = desc ? desc.split(' ').length : 0;
+  n.descSnippet = desc.slice(0, 320);
+  n.updated = persisted.updated ? persisted.updated : n.updated;
+  n.flags.shortDescription = !!short;
+  n.flags.description = !!desc;
+  n.fields = CRITERIA.filter(c => n.flags[c.key]).length;
+  n.score = n.fields / CRITERIA.length;
+  Object.assign(model.stats, scopeStats(model.nodes), {populatedCategories: model.stats.populatedCategories, categories: model.stats.categories, offerings: model.stats.offerings, minYear: model.stats.minYear, maxYear: model.stats.maxYear, lastRequest: model.stats.lastRequest});
+  return n;
+}

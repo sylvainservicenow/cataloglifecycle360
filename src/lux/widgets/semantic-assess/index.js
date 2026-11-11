@@ -5,6 +5,9 @@ import {i18n} from '@servicenow/aiux/aiux-services';
 
 const {discoverable, name, description, bestFor, server} = decorators;
 
+/** Assessments already generated this session, so the Transform workspace can show them without another AI call. */
+export const assessmentCache = new Map();
+
 @customElement('cat-semantic-assess')
 @discoverable(false)
 @name('Semantic assessment')
@@ -85,6 +88,11 @@ export default class SemanticAssess extends AIUXWidgetElement {
       this._state = 'idle';
       this._result = null;
       this._error = '';
+      const cached = assessmentCache.get(this.itemId);
+      if (cached) {
+        this._result = cached;
+        this._state = 'done';
+      }
     }
   }
 
@@ -97,6 +105,7 @@ export default class SemanticAssess extends AIUXWidgetElement {
         this._state = 'error';
       } else {
         this._result = r;
+        assessmentCache.set(this.itemId, r);
         this._state = 'done';
       }
     } catch (e) {

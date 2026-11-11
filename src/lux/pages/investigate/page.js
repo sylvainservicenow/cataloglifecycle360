@@ -2,7 +2,7 @@ import {html, css, nothing, isServer} from 'lit';
 import {customElement} from 'lit/decorators.js';
 import {AIUXElement, withWidgetContext} from '@servicenow/aiux/aiux-components-core';
 import {i18n} from '@servicenow/aiux/aiux-services';
-import {classLabel, loadCatalog, loadItemVariables, loadTextFacts, loadVariableStats} from '../../lib/catalog-data.js';
+import {applyPersisted, classLabel, loadCatalog, loadItemVariables, loadTextFacts, loadVariableStats} from '../../lib/catalog-data.js';
 import {classBreakdown, distribution, nodeIndex, scopedIds} from '../../lib/discovery.js';
 import {buildVisualEnrichment, visualBrief} from '../../lib/investigations/visual-enrichment.js';
 import {assessVariables, buildAiReadiness, DIMENSIONS, failedCount} from '../../lib/investigations/ai-readiness.js';
@@ -10,6 +10,7 @@ import {buildCsdmFoundation} from '../../lib/investigations/csdm.js';
 import {checkCapability} from '../../lib/capabilities.js';
 import '../../components/cat-universe.js';
 import '../../widgets/semantic-assess/index.js';
+import '../../widgets/catalog-transform/index.js';
 
 const ACCENT = '#F2812F';
 const SOFT = '#D5DEEA';
@@ -65,6 +66,23 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
           this._tab = 'criteria';
           const d = this._current();
           return {title: d.title, summary: d.summary, classification: d.method.classification, severity: d.severity, scopeCount: this._scopeIds().length, version: d.version};
+        });
+      }
+    },
+    open_transform: {
+      description: 'Open the Transform workspace for a catalog item (by name) to generate and review wording improvements. Nothing is changed until the user approves it.',
+      arguments: [{name: 'name', description: 'Item name; omit to use the selected item', type: 'string', required: false}],
+      definition: async function ({name} = {}) {
+        return this._tool(() => {
+          if (name) {
+            const n = this._model.nodes.find(x => x.name.toLowerCase() === String(name).toLowerCase()) || this._model.nodes.find(x => x.name.toLowerCase().includes(String(name).toLowerCase()));
+            if (!n) throw new Error(`No item matches "${name}"`);
+            this._openDiscovery('ai-readiness');
+            this._setItem(n.id);
+          }
+          if (!this._item) throw new Error('Select an item first');
+          this._active = 'ai-readiness';
+          this._openPrepare();
         });
       }
     },
@@ -506,6 +524,17 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       padding: 6px 10px;
       flex-wrap: wrap;
     }
+    .drawer-label {
+      border: 0;
+      background: rgba(47, 111, 237, 0.1);
+      color: #1d4fb8;
+      font: inherit;
+      font-weight: 700;
+      font-size: 0.8rem;
+      padding: 0.4rem 0.75rem;
+      border-radius: 0.7rem;
+      cursor: pointer;
+    }
     .tabs {
       display: flex;
       gap: 2px;
@@ -611,6 +640,9 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       animation: rise 0.35s ease;
       display: grid;
       gap: 14px;
+    }
+    .sheet.wide {
+      width: min(900px, 100%);
     }
     .sheet h2 {
       margin: 0;
@@ -931,6 +963,22 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   };
 
   /* ---------- preparation ---------- */
+  /** An approved change was saved and read back: bring every cached view in line with the database. */
+  _onApplied = async e => {
+    const {itemId, persisted} = e.detail;
+    applyPersisted(this._model, itemId, persisted);
+    const stats = await loadVariableStats().catch(() => null);
+    this._readiness = buildAiReadiness(this._model, stats);
+    this._visual = buildVisualEnrichment(this._model);
+    this._vars = null;
+    if (this._item === itemId) this._loadVars(itemId);
+    this.requestUpdate();
+  };
+
+  _closePrepare = () => {
+    this._prepare = false;
+  };
+
   _openPrepare(e) {
     this._opener = e?.currentTarget || this._opener;
     this._prepare = true;
@@ -1063,6 +1111,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     const label = {criteria: i18n.getMessage('Criteria'), evidence: i18n.getMessage('Evidence'), records: i18n.getMessage('Records'), steps: i18n.getMessage('Next steps')};
     return html`<section class="drawer card" aria-label=${i18n.getMessage('Reasoning and evidence')}>
       <div class="drawer-head">
+        <button class="drawer-label" aria-expanded=${this._drawer} @click=${() => (this._drawer = !this._drawer)}>${i18n.getMessage('Reasoning and evidence')} <span aria-hidden="true">${this._drawer ? '▾' : '▸'}</span></button>
         <div class="tabs" role="tablist" aria-label=${i18n.getMessage('Reasoning and evidence')}>
           ${TABS.map(t => html`<button class="tab" role="tab" id=${`tab-${t}`} aria-selected=${this._drawer && this._tab === t} aria-controls="panel" @click=${() => { this._tab = t; this._drawer = true; }}>${label[t]}</button>`)}
         </div>
@@ -1167,27 +1216,40 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
 
   _renderPrepare() {
     const d = this._current();
+    if (d.id === 'ai-readiness') return this._renderTransform();
     const ids = this._prepIds();
     const by = nodeIndex(this._model);
-    const isVisual = d.id === 'visual-enrichment';
     return html`<div class="scrim">
       <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="prep-title">
         <div class="eyebrow">${i18n.getMessage('Preparation · nothing is changed')}</div>
         <h2 id="prep-title" tabindex="-1">${d.recommendedAction.label}</h2>
-        <div class="note info">${i18n.getMessage('This prepares proposals for your review. No catalog record is created or modified here, and nothing is applied without a later, explicit approval.')}</div>
         <div class="step">
-          <h3>1 · ${i18n.getMessage('Scope')}</h3>
+          <h3>${i18n.getMessage('Scope')}</h3>
           <p>${i18n.getMessage('{0} item(s) will be prepared.', fmt(ids.length))} ${this._picked.size ? i18n.getMessage('You chose these items.') : this._item ? i18n.getMessage('The selected item.') : i18n.getMessage('Everything in the current scope.')}</p>
           <ul>${ids.slice(0, 6).map(id => html`<li>${by.get(id).name}</li>`)}${ids.length > 6 ? html`<li class="muted">${i18n.getMessage('and {0} more', fmt(ids.length - 6))}</li>` : nothing}</ul>
         </div>
-        ${isVisual ? this._renderPrepareVisual(ids) : this._renderPrepareReadiness(ids)}
-        <div class="step">
-          <h3>${isVisual ? '4' : '4'} · ${i18n.getMessage('Approval')}</h3>
-          <p>${i18n.getMessage('Applying approved changes to catalog records is a later phase. It will always show you exactly what changes before anything is written.')}</p>
-          <div class="actions"><button class="ghost" disabled>${i18n.getMessage('Approve and apply (not available in this phase)')}</button></div>
-        </div>
-        <div class="actions"><button class="primary" @click=${() => (this._prepare = false)}>${i18n.getMessage('Close')}</button></div>
+        ${this._renderPrepareVisual(ids)}
+        <div class="actions"><button class="primary" @click=${this._closePrepare}>${i18n.getMessage('Close')}</button></div>
       </div></div>`;
+  }
+
+  /** One item, one proposal, one review, one decision. */
+  _renderTransform() {
+    const by = nodeIndex(this._model);
+    if (!this._item) {
+      const choices = this._scopeIds().slice(0, 12);
+      return html`<div class="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="prep-title">
+        <div class="eyebrow">${i18n.getMessage('Transform workspace')}</div>
+        <h2 id="prep-title" tabindex="-1">${i18n.getMessage('Choose an item to improve')}</h2>
+        <p class="muted">${i18n.getMessage('Transform works on one item at a time. Pick one with potential AI readiness gaps.')}</p>
+        <ul class="recs">${choices.map(id => html`<li class="rec"><span></span><button class="name" @click=${() => this._setItem(id)}>${by.get(id).name}<small> · ${classLabel(by.get(id).cls)}</small></button><span></span></li>`)}</ul>
+        <div class="actions"><button class="ghost" @click=${this._closePrepare}>${i18n.getMessage('Close')}</button></div>
+      </div></div>`;
+    }
+    return html`<div class="scrim"><div class="sheet wide" role="dialog" aria-modal="true" aria-label=${i18n.getMessage('Transform workspace')}>
+      <cat-transform item-id=${this._item} .readiness=${this._readiness} @cat-transform:applied=${this._onApplied} @cat-transform:close=${this._closePrepare}></cat-transform>
+      <div class="actions"><button class="ghost" @click=${this._closePrepare}>${i18n.getMessage('Close workspace')}</button></div>
+    </div></div>`;
   }
 
   _renderPrepareVisual(ids) {
@@ -1207,27 +1269,6 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
         <p class="muted">${i18n.getMessage('The brief below is what a generator would receive. It is built from each record and is not AI output.')}</p>
         ${ids.slice(0, 3).map(id => html`<details><summary>${by.get(id).name}</summary><p>${visualBrief(by.get(id)).prompt}</p></details>`)}
         <div class="actions"><button class="ghost" @click=${() => this._copyBriefs(ids)}>${this._copied ? i18n.getMessage('Copied') : i18n.getMessage('Copy briefs')}</button></div>
-      </div>`;
-  }
-
-  _renderPrepareReadiness(ids) {
-    const by = nodeIndex(this._model);
-    const items = ids.slice(0, 4);
-    return html`<div class="step">
-        <h3>2 · ${i18n.getMessage('Gaps to review, from the deterministic checks')}</h3>
-        ${items.map(id => {
-          const n = by.get(id);
-          const a = this._readiness.assessments.get(id);
-          return html`<details open><summary>${n.name}</summary>
-            ${a?.failed.length ? html`<ul>${a.failed.map(f => html`<li><b>${f.check.label()}</b>: ${f.detail}</li>`)}</ul>` : html`<p class="muted">${i18n.getMessage('No gaps found by the deterministic checks.')}</p>`}
-            <div class="cmp"><div><b>${i18n.getMessage('Today')}</b><br>${n.shortDescription || html`<em>${i18n.getMessage('No short description')}</em>`}</div>
-              <div class="after"><b>${i18n.getMessage('Proposed wording')}</b><br><cat-semantic-assess item-id=${id}></cat-semantic-assess></div></div></details>`;
-        })}
-        ${ids.length > items.length ? html`<p class="muted">${i18n.getMessage('and {0} more item(s)', fmt(ids.length - items.length))}</p>` : nothing}
-      </div>
-      <div class="step">
-        <h3>3 · ${i18n.getMessage('AI-drafted wording for review')}</h3>
-        <div class="note info">${i18n.getMessage('Each item above can be sent to the language model on request (Generic Prompt, one call per item). Its suggestions are labelled as AI-generated and are never applied: approving and applying changes is a later phase.')}</div>
       </div>`;
   }
 }
