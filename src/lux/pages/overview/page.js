@@ -1,6 +1,6 @@
 import {html, css, nothing} from 'lit';
 import {customElement} from 'lit/decorators.js';
-import {AIUXElement} from '@servicenow/aiux/aiux-components-core';
+import {AIUXElement, withWidgetContext} from '@servicenow/aiux/aiux-components-core';
 import {navigate} from '@servicenow/aiux/aiux-client';
 import {i18n} from '@servicenow/aiux/aiux-services';
 import {loadCatalog, loadTextFacts, loadVariableStats} from '../../lib/catalog-data.js';
@@ -9,10 +9,18 @@ import {buildFormIntelligence, loadAllVariables} from '../../lib/investigations/
 import {buildOverlap} from '../../lib/investigations/overlap.js';
 import {buildTaxonomy} from '../../lib/investigations/taxonomy.js';
 import {buildCsdm, loadServiceData} from '../../lib/investigations/csdm.js';
+import {OTTO_TOOLS, ottoContext} from '../../lib/otto.js';
 import '../../components/cat-universe.js';
 
-@customElement('x-snc-catalogintel-home-page')
-export default class HomePage extends AIUXElement {
+@customElement('x-snc-catalogintel-overview-page')
+export default class OverviewPage extends withWidgetContext(AIUXElement) {
+  static aiContext = {
+    description: 'The Catalog Intelligence 360 overview: live opportunity counts for metadata, forms, duplicates, categories and service alignment in the real service catalog',
+    bestFor: 'When the user asks to find duplicate catalog items, confusing forms, poorly categorised items or service alignment, or to improve a catalog item'
+  };
+
+  static client_tools = OTTO_TOOLS;
+
   static properties = {
     _stats: {state: true},
     _opps: {state: true}
@@ -23,6 +31,8 @@ export default class HomePage extends AIUXElement {
       display: block;
       width: 100%;
       min-width: 0;
+      /* room for Otto's docked bar so it never covers the last cards */
+      padding-bottom: 96px;
     }
     .hero-universe {
       height: clamp(320px, 40vh, 440px);
@@ -80,6 +90,7 @@ export default class HomePage extends AIUXElement {
 
   firstUpdated() {
     document.title = i18n.getMessage('Catalog Intelligence 360');
+    ottoContext(this, {page: 'Overview'}).then(c => this.setAiContext(c));
   }
 
   _go = () => navigate('/explore');

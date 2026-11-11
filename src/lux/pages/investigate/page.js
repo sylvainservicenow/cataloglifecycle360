@@ -11,6 +11,7 @@ import {buildFormIntelligence, loadAllVariables, loadChoices, patchVariables} fr
 import {buildOverlap, KIND as OVERLAP_KIND} from '../../lib/investigations/overlap.js';
 import {buildTaxonomy, categoryCandidates, ISSUE as TAXONOMY_ISSUE} from '../../lib/investigations/taxonomy.js';
 import {buildCsdm, loadServiceData, offeringCandidates, resetServiceData} from '../../lib/investigations/csdm.js';
+import {OTTO_TOOLS, ottoContext} from '../../lib/otto.js';
 import '../../components/cat-universe.js';
 import '../../widgets/semantic-assess/index.js';
 import '../../widgets/catalog-transform/index.js';
@@ -46,17 +47,11 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     bestFor: 'When the user wants to investigate catalog quality, find confusing forms, potential duplicates, poorly categorised items or service alignment, or prepare an improvement'
   };
 
-  /* Conversational tools. They move the view and open review workspaces. Generating a proposal needs a click and nothing is saved without the person's confirmation. */
+  /* Conversational tools. The five core tools are shared with Overview and Explore (lib/otto.js) so Otto finds the same tools on every page; the ones below only move this page's view. Generating a proposal needs a click and nothing is saved without the person's confirmation. */
   static client_tools = {
-    open_investigation: {
-      description: 'Open an investigation: ai-readiness (metadata), form-intelligence, overlap (duplicates), taxonomy (categories) or csdm-alignment (service offerings)',
-      arguments: [{name: 'id', description: 'ai-readiness, form-intelligence, overlap, taxonomy or csdm-alignment', type: 'string', required: true}],
-      definition: async function ({id}) {
-        return this._tool(() => this._openDiscovery(id));
-      }
-    },
+    ...OTTO_TOOLS,
     focus_category: {
-      description: 'Focus a catalog category by its name (or empty to show all categories)',
+      description: 'Focus a catalog category in the current investigation by its title, or clear the focus when no name is given',
       arguments: [{name: 'name', description: 'Category title, partial matches allowed', type: 'string', required: false}],
       definition: async function ({name} = {}) {
         return this._tool(() => {
@@ -68,11 +63,17 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       }
     },
     select_item: {
-      description: 'Select a catalog item by name in the current investigation',
-      arguments: [{name: 'name', description: 'Item name, partial matches allowed', type: 'string', required: true}],
-      definition: async function ({name}) {
+      description: 'Select a catalog item in the current investigation, by sys_id (preferred) or by name',
+      arguments: [
+        {name: 'item_id', description: 'sys_id of the catalog item', type: 'string', required: false},
+        {name: 'item_name', description: 'Item name, only if the sys_id is unknown', type: 'string', required: false}
+      ],
+      definition: async function (args = {}) {
         return this._tool(() => {
-          this._setItem(this._byName(name).id);
+          const n = args.item_id ? nodeIndex(this._model).get(args.item_id) : this._byName(args.item_name || '');
+          if (!n) throw new Error('No such catalog item');
+          this._setItem(n.id);
+          return {selectedItem: {item_id: n.id, name: n.name}};
         });
       }
     },
@@ -89,69 +90,12 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
         });
       }
     },
-    show_overlap_group: {
-      description: 'Open the duplicate and overlap investigation and select an item (by name) to show its candidate group, or the first group in the focused category',
-      arguments: [{name: 'name', description: 'Item name, partial matches allowed; omit to use the first group in scope', type: 'string', required: false}],
-      definition: async function ({name} = {}) {
-        this._openDiscovery('overlap');
-        await this._ensure('overlap');
-        return this._tool(() => {
-          const ids = this._scopeIds();
-          const id = name ? this._byName(name).id : ids[0];
-          if (!id) throw new Error('No candidate group in this scope');
-          this._setItem(id);
-          const g = this._disc.overlap?.groupOf.get(id);
-          return g ? {group: g.ids.map(x => nodeIndex(this._model).get(x)?.name), kind: g.kind} : {note: 'The item is not in a candidate group'};
-        });
-      }
-    },
-    open_transform: {
-      description: 'Open the Transform workspace for a catalog item (by name) to generate and review wording improvements. Nothing is changed until the user approves it.',
-      arguments: [{name: 'name', description: 'Item name; omit to use the selected item', type: 'string', required: false}],
-      definition: async function ({name} = {}) {
-        return this._tool(() => {
-          if (name) {
-            this._openDiscovery('ai-readiness');
-            this._setItem(this._byName(name).id);
-          }
-          if (!this._item) throw new Error('Select an item first');
-          this._active = 'ai-readiness';
-          this._openPrepare();
-        });
-      }
-    },
     prepare_action: {
-      description: 'Open the review workspace for the current investigation and selected item: improve a form, compare overlapping items, recommend a category or check service alignment. It only prepares proposals; saving needs the person to confirm.',
-      arguments: [{name: 'name', description: 'Item name; omit to use the selected item', type: 'string', required: false}],
-      definition: async function ({name} = {}) {
+      description: 'Open the review workspace of the current investigation for the selected item (improve a form, compare overlapping items, recommend a category, check service alignment or prepare wording). It only prepares proposals; saving needs the person to confirm.',
+      arguments: [],
+      definition: async function () {
         return this._tool(() => {
-          if (name) this._setItem(this._byName(name).id);
-          this._openPrepare();
-        });
-      }
-    },
-    recommend_category: {
-      description: 'Open the category recommendation workspace for an item (by name). The AI only chooses among existing categories and nothing is saved until the person confirms.',
-      arguments: [{name: 'name', description: 'Item name; omit to use the selected item', type: 'string', required: false}],
-      definition: async function ({name} = {}) {
-        this._openDiscovery('taxonomy');
-        await this._ensure('taxonomy');
-        return this._tool(() => {
-          if (name) this._setItem(this._byName(name).id);
-          if (!this._item) throw new Error('Select an item first');
-          this._openPrepare();
-        });
-      }
-    },
-    check_service_alignment: {
-      description: 'Open the service alignment workspace for an item (by name) to compare it with candidate service offerings. Nothing is saved until the person confirms.',
-      arguments: [{name: 'name', description: 'Item name; omit to use the selected item', type: 'string', required: false}],
-      definition: async function ({name} = {}) {
-        this._openDiscovery('csdm-alignment');
-        await this._ensure('csdm-alignment');
-        return this._tool(() => {
-          if (name) this._setItem(this._byName(name).id);
-          if (!this._item) throw new Error('Select an item first');
+          if (!this._item) throw new Error('No item is selected. Ask the person to select an item first.');
           this._openPrepare();
         });
       }
@@ -877,56 +821,67 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   async _load() {
     try {
       this._model = await loadCatalog();
-      this._ensure(this._active);
+      await this._ensure(this._active);
       if (this._item) this._wantText();
+      if (this._pendingOpen && this._item && this._current()) {
+        this._pendingOpen = false;
+        this._openPrepare();
+      }
     } catch (e) {
       this._error = e?.message || 'error';
     }
   }
 
-  /** Each investigation is built once, on demand, from native records, then cached. */
-  async _ensure(id) {
-    if (!this._model) return;
+  /** Each investigation is built once, on demand, from native records, then cached. Concurrent callers share one build. */
+  _ensure(id) {
+    if (!this._model) return Promise.resolve();
     if (id === 'ai-readiness') return this._ensureReadiness();
     const key = {'form-intelligence': 'form', overlap: 'overlap', taxonomy: 'taxonomy', 'csdm-alignment': 'csdm'}[id];
-    if (!key || this._disc[key] || this._loading?.[key]) return;
-    (this._loading ||= {})[key] = true;
+    if (!key || this._disc[key]) return Promise.resolve();
+    this._building ||= {};
+    if (this._building[key]) return this._building[key];
     this._discError = '';
-    try {
-      let built;
-      if (key === 'form') {
-        const [stats, vars] = await Promise.all([loadVariableStats(), loadAllVariables()]);
-        built = buildFormIntelligence(this._model, stats, vars);
-      } else if (key === 'overlap') {
-        await loadTextFacts(this._model).catch(() => {});
-        built = buildOverlap(this._model);
-      } else if (key === 'taxonomy') built = buildTaxonomy(this._model);
-      else {
-        const data = await loadServiceData();
-        built = {...buildCsdm(this._model, data), data};
+    this._building[key] = (async () => {
+      try {
+        let built;
+        if (key === 'form') {
+          const [stats, vars] = await Promise.all([loadVariableStats(), loadAllVariables()]);
+          built = buildFormIntelligence(this._model, stats, vars);
+        } else if (key === 'overlap') {
+          await loadTextFacts(this._model).catch(() => {});
+          built = buildOverlap(this._model);
+        } else if (key === 'taxonomy') built = buildTaxonomy(this._model);
+        else {
+          const data = await loadServiceData();
+          built = {...buildCsdm(this._model, data), data};
+        }
+        this._disc = {...this._disc, [key]: built};
+      } catch (e) {
+        this._discError = e?.message || 'error';
+      } finally {
+        this._building[key] = null;
       }
-      this._disc = {...this._disc, [key]: built};
-    } catch (e) {
-      this._discError = e?.message || 'error';
-    } finally {
-      this._loading[key] = false;
-    }
+    })();
+    return this._building[key];
   }
 
   /** AI readiness needs the variable counts; they load (once, cached) the first time they are wanted. */
-  async _ensureReadiness() {
-    if (this._readiness || this._readinessLoading) return;
-    this._readinessLoading = true;
-    try {
-      const [stats] = await Promise.all([loadVariableStats(), loadTextFacts(this._model)]);
-      this._readiness = buildAiReadiness(this._model, stats);
-    } catch (e) {
-      this._readinessError = e?.message || 'error';
-      // Without the variable counts the form check reports "pending"; without text facts nothing is assessed.
-      if (this._model.textFacts) this._readiness = buildAiReadiness(this._model, null);
-    } finally {
-      this._readinessLoading = false;
-    }
+  _ensureReadiness() {
+    if (this._readiness) return Promise.resolve();
+    if (this._readinessLoading) return this._readinessLoading;
+    this._readinessLoading = (async () => {
+      try {
+        const [stats] = await Promise.all([loadVariableStats(), loadTextFacts(this._model)]);
+        this._readiness = buildAiReadiness(this._model, stats);
+      } catch (e) {
+        this._readinessError = e?.message || 'error';
+        // Without the variable counts the form check reports "pending"; without text facts nothing is assessed.
+        if (this._model.textFacts) this._readiness = buildAiReadiness(this._model, null);
+      } finally {
+        this._readinessLoading = null;
+      }
+    })();
+    return this._readinessLoading;
   }
 
   /** Description text for the inspector; fetched on first need, then cached. */
@@ -960,6 +915,8 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     this._cat = q.get('cat') || null;
     this._item = q.get('item') || null;
     this._cls = q.get('type') || '';
+    // a tool on another page asked for a workspace to open on arrival
+    this._pendingOpen = initial && q.get('open') === 'workspace';
     if (!initial) this._vars = null;
   }
 
@@ -1036,17 +993,44 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   }
 
   _pushContext() {
-    const d = this._current();
-    const item = this._item ? nodeIndex(this._model).get(this._item) : null;
-    const group = item && this._active === 'overlap' ? this._disc.overlap?.groupOf.get(item.id) : null;
-    this.setAiContext?.({
-      page: 'Investigate',
-      investigation: d ? {id: d.id, title: d.title, classification: d.method.classification, severity: d.severity.level, affectedInScope: this._scopeIds().length} : null,
-      focusedCategory: this._cat ? this._model.clusters.find(c => c.id === this._cat)?.title : null,
-      itemTypeFilter: this._cls || null,
-      selectedItem: item ? {id: item.id, name: item.name, overlapGroup: group ? group.ids.map(id => nodeIndex(this._model).get(id)?.name) : undefined} : null,
-      availableInvestigations: INVESTIGATIONS
+    ottoContext(this, {page: 'Investigate', investigation: this._active, itemId: this._item, categoryId: this._cat}).then(c => {
+      const d = this._current();
+      const group = this._item && this._active === 'overlap' ? this._disc.overlap?.groupOf.get(this._item) : null;
+      this.setAiContext?.({
+        ...c,
+        findings: d ? {title: d.title, classification: d.method.classification, affectedInScope: this._scopeIds().length} : null,
+        overlapGroupItemIds: group ? group.ids : undefined,
+        itemTypeFilter: this._cls || null
+      });
     });
+  }
+
+  /** The item and category the person has selected, for tools that act on "this item". */
+  _ottoSelection() {
+    return {itemId: this._item, categoryId: this._cat};
+  }
+
+  /** Open an investigation for a tool call: select the item by sys_id, build real findings, optionally open the workspace. */
+  async _ottoOpen(d, {itemId, categoryId, workspace}) {
+    if (!this._model) await this._load();
+    this._openDiscovery(d);
+    if (categoryId) this._setCat(categoryId);
+    if (itemId) this._setItem(itemId);
+    await this._ensure(d);
+    const disc = this._current();
+    if (!disc) return {success: false, error: this._discError || 'The investigation could not be built.'};
+    if (workspace && this._item) await this._openPrepare();
+    await this.updateComplete;
+    const n = this._item ? nodeIndex(this._model).get(this._item) : null;
+    return {
+      success: true,
+      investigation: disc.title,
+      findingsInScope: this._scopeIds().length,
+      summary: disc.summary,
+      selectedItem: n ? {item_id: n.id, name: n.name} : null,
+      workspaceOpen: !!(workspace && this._item),
+      message: workspace ? 'The review workspace is open. The person generates the proposal and confirms any change.' : 'The investigation is open with real findings.'
+    };
   }
 
   /* ---------- universe wiring ---------- */

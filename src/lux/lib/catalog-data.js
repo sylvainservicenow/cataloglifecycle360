@@ -86,12 +86,14 @@ const CLASS_LABELS = {
   sn_cmp_bp_cat_item: 'Cloud Catalog Item',
   sn_cmp_rsrc_opr_cat_item: 'Resource Operation Catalog Item',
   sn_eam_enterprise_cat_item: 'Enterprise Catalog',
-  pc_hardware_cat_item: 'Hardware Catalog',
+  pc_hardware_cat_item: 'Hardware Catalog Item',
   pc_software_cat_item: 'Software Catalog',
   pc_product_cat_item: 'Product Catalog Item'
 };
 const liveClassLabels = {};
-export const classLabel = c => liveClassLabels[c] || CLASS_LABELS[c] || String(c || '').replace(/_/g, ' ').trim() || 'Other';
+/** This class is a catalog item type, not the Hardware category, so its platform label is made explicit. */
+const LABEL_OVERRIDE = {pc_hardware_cat_item: 'Hardware Catalog Item'};
+export const classLabel = c => LABEL_OVERRIDE[c] || liveClassLabels[c] || CLASS_LABELS[c] || String(c || '').replace(/_/g, ' ').trim() || 'Other';
 
 /** Quality criteria: each is a plain, checkable fact on the record. */
 export const CRITERIA = [

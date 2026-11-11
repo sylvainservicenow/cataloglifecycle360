@@ -3,7 +3,7 @@
   "projectId": "x_snc_catalogintel_catalogintelligence360",
   "basename": "catalogintelligence360",
   "srcDir": "src/lux",
-  "landing": "/home",
+  "landing": "/overview",
   "createAnalyticsApp": true,
   "development": {
     "token": ""

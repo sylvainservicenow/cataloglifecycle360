@@ -937,6 +937,7 @@ export default class CatUniverse extends AIUXElement {
     this._applyCam();
     if (changed.has('_focus') && changed.get('_focus') !== undefined) this._emit('cat-universe:focus', {id: this._focus});
     if (changed.has('_selected') && changed.get('_selected') !== undefined) this._emit('cat-universe:select', {id: this._selected});
+    if (changed.has('_lens') && changed.get('_lens') !== undefined) this._emit('cat-universe:lens', {lens: this._lens});
     if (changed.has('lens') && this.lens && LENSES.some(l => l.id === this.lens)) this._setLens(this.lens);
     if (changed.has('focusId') || changed.has('selectedId')) this._syncExternal();
   }

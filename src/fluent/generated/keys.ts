@@ -33,6 +33,7 @@ declare global {
                     'aiux-experience-page-rel|x-snc-catalogintel-home-page': {
                         table: 'sys_aix_experience_page_rel'
                         id: '94af5a6457d4e8000079d2c2572dc35b'
+                        deleted: true
                     }
                     'aiux-experience-page-rel|x-snc-catalogintel-incidents-page': {
                         table: 'sys_aix_experience_page_rel'
@@ -42,6 +43,10 @@ declare global {
                     'aiux-experience-page-rel|x-snc-catalogintel-investigate-page': {
                         table: 'sys_aix_experience_page_rel'
                         id: 'ae445debcc4d010558b3f9e4041ffe32'
+                    }
+                    'aiux-experience-page-rel|x-snc-catalogintel-overview-page': {
+                        table: 'sys_aix_experience_page_rel'
+                        id: '1d00a7f1bafd33150d2df4f8d085014a'
                     }
                     'aiux-experience-prop|appHeadCss': {
                         table: 'sys_aix_experience_properties'
@@ -83,10 +88,12 @@ declare global {
                     'aiux-m2m-widget-dep|x-snc-catalogintel-home-page|cat-universe.js': {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: '1dfa16f7eda8361018c1fe1ad266d140'
+                        deleted: true
                     }
                     'aiux-m2m-widget-dep|x-snc-catalogintel-home-page|csdm.js': {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: 'b22362b566618c0b3a2c31e5538659c7'
+                        deleted: true
                     }
                     'aiux-m2m-widget-dep|x-snc-catalogintel-investigate-page|ai-readiness.js': {
                         table: 'sys_aix_m2m_widget_dependency'
@@ -101,6 +108,14 @@ declare global {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: 'fe5d35cf46ab8b436403be365c60855a'
                     }
+                    'aiux-m2m-widget-dep|x-snc-catalogintel-overview-page|cat-universe.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '3895343b713350ca4b7fff1c5f569e2c'
+                    }
+                    'aiux-m2m-widget-dep|x-snc-catalogintel-overview-page|csdm.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '49edee02020822ff5a76b0bf121c95d2'
+                    }
                     'aiux-page-widget|x-snc-catalogintel-explore-page': {
                         table: 'sys_aix_widget'
                         id: '4c0a28d642d9f08197f01d5c4789a1fe'
@@ -108,6 +123,7 @@ declare global {
                     'aiux-page-widget|x-snc-catalogintel-home-page': {
                         table: 'sys_aix_widget'
                         id: '762b95835631fd8367e6ae3ffe9065c5'
+                        deleted: true
                     }
                     'aiux-page-widget|x-snc-catalogintel-incidents-page': {
                         table: 'sys_aix_widget'
@@ -118,6 +134,10 @@ declare global {
                         table: 'sys_aix_widget'
                         id: '8a85393c12174648123b158bee7bc14c'
                     }
+                    'aiux-page-widget|x-snc-catalogintel-overview-page': {
+                        table: 'sys_aix_widget'
+                        id: '27c60361522adcddf630837fdf1c3b46'
+                    }
                     'aiux-page|x-snc-catalogintel-explore-page': {
                         table: 'sys_aix_page'
                         id: '75c6e1db5bed7bf2be3e0e5de6d03a69'
@@ -125,6 +145,7 @@ declare global {
                     'aiux-page|x-snc-catalogintel-home-page': {
                         table: 'sys_aix_page'
                         id: '9f9d271877e1afa9cecacc45a84f47af'
+                        deleted: true
                     }
                     'aiux-page|x-snc-catalogintel-incidents-page': {
                         table: 'sys_aix_page'
@@ -134,6 +155,10 @@ declare global {
                     'aiux-page|x-snc-catalogintel-investigate-page': {
                         table: 'sys_aix_page'
                         id: '27cefce42134cdb9adda35c2e3f0bc6d'
+                    }
+                    'aiux-page|x-snc-catalogintel-overview-page': {
+                        table: 'sys_aix_page'
+                        id: 'd10523867cff17c2bd9ef99aa3b44858'
                     }
                     'aiux-project|x_snc_catalogintel_catalogintelligence360': {
                         table: 'sys_aix_project'
