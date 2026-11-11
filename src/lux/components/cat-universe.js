@@ -45,6 +45,12 @@ const fmt = n => new Intl.NumberFormat().format(n);
 export default class CatUniverse extends AIUXElement {
   static properties = {
     compact: {type: Boolean},
+    /* Investigation mode: the host page supplies what is highlighted, so lenses, stats and the built-in detail panel are hidden. */
+    investigate: {type: Boolean},
+    markers: {attribute: false}, // {sys_id: colour} for items to highlight; every other item is de-emphasised
+    legendItems: {attribute: false}, // [{color, label}] describing the markers
+    focusId: {attribute: 'focus-id'}, // category (cluster) id to focus
+    selectedId: {attribute: 'selected-id'}, // item sys_id to select
     _model: {state: true},
     _error: {state: true},
     _lens: {state: true},
@@ -139,7 +145,7 @@ export default class CatUniverse extends AIUXElement {
       stroke-width: 1.5;
     }
     .dot.dim {
-      opacity: 0.6;
+      opacity: 0.55;
     }
     .dot:focus-visible {
       stroke: #032d42;
@@ -544,6 +550,15 @@ export default class CatUniverse extends AIUXElement {
     .zoom.shift {
       right: calc(min(340px, 100% - 24px) + 24px);
     }
+    /* investigation mode: the host owns the right edge (inspector), so the pad sits under the breadcrumb */
+    :host([investigate]) .zoom {
+      right: auto;
+      left: 12px;
+      top: 64px;
+    }
+    :host([investigate]:not([selected-id=''])) .crumbs {
+      max-width: calc(100% - 392px);
+    }
     .zbtn {
       border: 0;
       border-radius: 0.6rem;
@@ -584,6 +599,7 @@ export default class CatUniverse extends AIUXElement {
     }
     .story {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: 10px;
       padding: 0.5rem 0.55rem 0.5rem 0.85rem;
@@ -625,6 +641,11 @@ export default class CatUniverse extends AIUXElement {
       padding: 0.4rem 0.8rem;
       border-radius: 0.7rem;
       cursor: pointer;
+    }
+    .cta.alt {
+      background: #fff;
+      color: #032d42;
+      border: 1px solid rgba(3, 45, 66, 0.25);
     }
     .cta:focus-visible {
       outline: 3px solid #2f6fed;
@@ -828,6 +849,11 @@ export default class CatUniverse extends AIUXElement {
   constructor() {
     super();
     this.compact = false;
+    this.investigate = false;
+    this.markers = null;
+    this.legendItems = null;
+    this.focusId = null;
+    this.selectedId = null;
     this._model = null;
     this._error = '';
     this._lens = 'overview';
@@ -878,8 +904,28 @@ export default class CatUniverse extends AIUXElement {
     }
   }
 
-  updated() {
+  updated(changed) {
     this._applyCam();
+    if (changed.has('_focus') && changed.get('_focus') !== undefined) this._emit('cat-universe:focus', {id: this._focus});
+    if (changed.has('_selected') && changed.get('_selected') !== undefined) this._emit('cat-universe:select', {id: this._selected});
+    if (changed.has('focusId') || changed.has('selectedId')) this._syncExternal();
+  }
+
+  _emit(name, detail) {
+    this.dispatchEvent(new CustomEvent(name, {detail, bubbles: true, composed: true}));
+  }
+
+  /** Apply focus / selection set by the host page, once the layout exists. */
+  _syncExternal() {
+    if (!this._layout) return;
+    const want = this.focusId || null;
+    if (want !== this._focus && (!want || this._layout.byId.has(want))) this._focusCluster(want, !!this.selectedId, true);
+    const sel = this.selectedId || null;
+    if (sel !== this._selected) {
+      if (sel && !this._layout.itemPos.has(sel)) return;
+      if (sel) this._select(sel, true);
+      else this._selected = null;
+    }
   }
 
   async _load() {
@@ -902,7 +948,8 @@ export default class CatUniverse extends AIUXElement {
       this._cam = {...fit, w: fit.w * 0.55};
       this._applyCam();
       if (start && this._layout.byId.has(start)) this._focusCluster(start, false, true);
-      else this._flyTo(fit, 1700);
+      else this._flyTo(fit, this.investigate ? 900 : 1700);
+      this._syncExternal();
     } catch (e) {
       this._error = e?.message || 'error';
     }
@@ -1007,13 +1054,13 @@ export default class CatUniverse extends AIUXElement {
   }
 
   _hashFocus() {
-    if (isServer) return null;
+    if (isServer || this.investigate) return null;
     const m = /cluster=([0-9a-f]{32}|__none__)/.exec(window.location.hash);
     return m ? m[1] : null;
   }
 
   _focusCluster(id, keepSelection = false, fromHistory = false) {
-    if (!fromHistory && !this.compact && id !== this._focus) {
+    if (!fromHistory && !this.compact && !this.investigate && id !== this._focus) {
       const url = new URL(window.location.href);
       url.hash = id ? `cluster=${id}` : '';
       window.history.pushState(window.history.state, '', url);
@@ -1044,7 +1091,7 @@ export default class CatUniverse extends AIUXElement {
   _select(id) {
     const pos = this._layout.itemPos.get(id);
     if (!pos) return;
-    if (this._focus !== pos.n.cluster) this._focusCluster(pos.n.cluster, true);
+    if (this._focus !== pos.n.cluster) this._focusCluster(pos.n.cluster, true, this.investigate);
     this._selected = id;
     this._searchOpen = false;
     this._legendOpen = false;
@@ -1052,6 +1099,7 @@ export default class CatUniverse extends AIUXElement {
 
   /* ---------- lens ---------- */
   _fill(n) {
+    if (this.markers) return this.markers[n.id] ?? SOFT;
     switch (this._lens) {
       case 'quality':
         if (this._gap) return n.flags[this._gap] ? SOFT : AMBER;
@@ -1257,6 +1305,11 @@ export default class CatUniverse extends AIUXElement {
     }
   }
 
+  /** Ask the host page to open an investigation for what is on screen (category and/or item). */
+  _investigate(discovery, itemId = null) {
+    this._emit('cat-universe:investigate', {discovery, categoryId: this._focus && this._focus !== '__none__' ? this._focus : null, itemId});
+  }
+
   _enter() {
     this.dispatchEvent(new CustomEvent('cat-universe:enter', {bubbles: true, composed: true}));
   }
@@ -1271,11 +1324,11 @@ export default class CatUniverse extends AIUXElement {
       return html`<div class="stage"><div class="state" role="status"><div><div class="orbit"></div>${i18n.getMessage('Mapping your catalog universe…')}</div></div></div>`;
     }
     return html`
-      ${this.compact ? nothing : this._renderBar()}
+      ${this.compact || this.investigate ? nothing : this._renderBar()}
       <div class="stage">
         ${this._narrow ? html`<div class="state" role="status"><small>${i18n.getMessage('Not enough room here. Collapse the sidebar or widen the window.')}</small></div>` : nothing}
-        ${guard([this._model, this._lens, this._gap, this._focus, this._selected, this.compact, this._matchKey()], () => this._renderSvg())}
-        ${this.compact ? this._renderEnter() : html`${this._renderCrumbs()}${this._renderZoom()}${this._selected ? this._renderDetail() : nothing}${this._renderDock()}`}
+        ${guard([this._model, this._lens, this._gap, this._focus, this._selected, this.compact, this._matchKey(), this.markers], () => this._renderSvg())}
+        ${this.compact ? this._renderEnter() : html`${this._renderCrumbs()}${this._renderZoom()}${this._selected && !this.investigate ? this._renderDetail() : nothing}${this._renderDock()}`}
         ${this._hover ? this._renderTip() : nothing}
         <div class="vh" aria-live="polite">${this._focus ? i18n.getMessage('Exploring {0}', this._layout.titles.get(this._focus)) : nothing}</div>
       </div>
@@ -1288,7 +1341,7 @@ export default class CatUniverse extends AIUXElement {
 
   _renderZoom() {
     const b = (label, glyph, fn) => html`<button class="zbtn" aria-label=${label} title=${label} @click=${fn}>${glyph}</button>`;
-    return html`<div class="zoom glass ${classMap({shift: !!this._selected})}" role="group" aria-label=${i18n.getMessage('Zoom and pan')}>
+    return html`<div class="zoom glass ${classMap({shift: !!this._selected && !this.investigate})}" role="group" aria-label=${i18n.getMessage('Zoom and pan')}>
       ${b(i18n.getMessage('Zoom in'), '+', () => this._zoomBy(0.6))}
       ${b(i18n.getMessage('Pan up'), '↑', () => this._panBy(0, -0.2))}
       ${b(i18n.getMessage('Zoom out'), '−', () => this._zoomBy(1.6))}
@@ -1335,7 +1388,7 @@ export default class CatUniverse extends AIUXElement {
         const n = it.n;
         const isSel = this._selected === n.id;
         const hollow = this._lens === 'lifecycle' && !n.active;
-        const dim = (this._lens === 'demand' && !n.requests) || false;
+        const dim = this.markers ? !this.markers[n.id] : this._lens === 'demand' && !n.requests;
         return svg`<circle class="dot ${classMap({hollow, dim})}"
           style="cx:${on ? it.xx : it.x}px;cy:${on ? it.yy : it.y}px;r:${isSel ? 6.8 : dotR}px;fill:${this._fill(n)};${hollow ? `stroke:${INACTIVE_STROKE};` : ''}${isSel ? 'stroke:#032D42;stroke-width:2.2;' : ''}"
           data-item=${n.id} data-cluster=${c.id}
@@ -1431,12 +1484,17 @@ export default class CatUniverse extends AIUXElement {
         <dt>${i18n.getMessage('Created')}</dt><dd>${this._fmtDate(n.created)}</dd>
         <dt>${i18n.getMessage('Updated')}</dt><dd>${this._fmtDate(n.updated)}</dd>
       </dl>
+      <div class="tags">
+        ${!n.flags.icon ? html`<button class="chip" @click=${() => this._investigate('visual-enrichment', n.id)}>${i18n.getMessage('Investigate visual')}</button>` : nothing}
+        <button class="chip" @click=${() => this._investigate('ai-readiness', n.id)}>${i18n.getMessage('Investigate AI readiness')}</button>
+      </div>
       <a class="open" href=${`/sc_cat_item.do?sys_id=${n.id}`} target="_blank" rel="noopener noreferrer">${i18n.getMessage('Open record')} ↗<span class="vh"> ${i18n.getMessage('(opens in a new tab)')}</span></a>
     </aside>`;
   }
 
   /* bottom dock: legend + collapsed lens summary (left), one verified opportunity (right) */
   _renderDock() {
+    if (this.investigate) return html`<div class="dock"><div class="dock-l">${this._renderLegend(null)}</div></div>`;
     const sc = this._scope();
     const s = sc.stats;
     const g = this._model.stats;
@@ -1464,6 +1522,12 @@ export default class CatUniverse extends AIUXElement {
 
   /** Compact key for the active lens, counted over the same items the dock summarises. */
   _renderLegend(sc) {
+    if (this.investigate) {
+      return html`<ul class="legend glass" aria-label=${i18n.getMessage('Legend')}>
+        ${(this.legendItems || []).map(l => html`<li><i class="sw" style="background:${l.color}"></i>${l.label}</li>`)}
+        ${this._selected ? html`<li><i class="sw sel"></i>${i18n.getMessage('Selected')}</li>` : nothing}
+      </ul>`;
+    }
     const s = sc.stats;
     const g = this._model.stats;
     const sw = (color, text, cls = '') => html`<li><i class="sw ${cls}" style="background:${color}"></i>${text}</li>`;
@@ -1511,6 +1575,7 @@ export default class CatUniverse extends AIUXElement {
         ${st.worst ? html`<small>${i18n.getMessage('Most affected category: {0} ({1} of {2} items)', st.worst.title, fmt(st.worst.m), fmt(st.worst.n))}</small>` : nothing}
         <small>${i18n.getMessage('Counted directly from catalog records.')}</small></span>
       <button class="cta" @click=${() => (active ? this._setLens('overview') : ((this._lens = 'quality'), (this._gap = st.key)))}>${active ? i18n.getMessage('Clear') : i18n.getMessage('Show where')}</button>
+      ${st.key !== 'category' ? html`<button class="cta alt" @click=${() => this._investigate(st.key === 'icon' ? 'visual-enrichment' : 'ai-readiness')}>${i18n.getMessage('Investigate')}</button>` : nothing}
     </div>`;
   }
 

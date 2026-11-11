@@ -17,6 +17,11 @@ export default {
         icon: 'compass',
         title: i18n.getMessage('Explore'),
         action: {type: 'navigate', path: '/explore'}
+      },
+      {
+        icon: 'search',
+        title: i18n.getMessage('Investigate'),
+        action: {type: 'navigate', path: '/investigate'}
       }
     ];
 

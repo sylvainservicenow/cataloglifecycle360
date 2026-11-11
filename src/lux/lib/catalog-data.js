@@ -9,12 +9,14 @@ import {aiuxFetch} from '@servicenow/aiux/aiux-components-core';
 import {i18n} from '@servicenow/aiux/aiux-services';
 
 const PAGE = 1000;
+/** Diagnostics for the last catalog load (read from the console: window.__catalogTiming). */
+export const timing = {};
 const UNCATEGORISED = '__none__';
 
-const val = x => (x && typeof x === 'object' ? (x.value ?? '') : (x ?? ''));
-const plain = html => String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+export const val = x => (x && typeof x === 'object' ? (x.value ?? '') : (x ?? ''));
+export const plain = html => String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
-async function getJson(url) {
+export async function getJson(url) {
   const r = await aiuxFetch(url, {headers: {Accept: 'application/json'}});
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const rows = (await r.json())?.result ?? [];
@@ -26,20 +28,37 @@ async function getJson(url) {
  * Fetch every row of a table (paged). ACLs can make a page shorter than the
  * limit, so paging follows the server's total count, never the page length.
  */
-async function fetchAll(table, query, fields) {
+export async function fetchAll(table, query, fields, parallel = 1) {
+  const t0 = performance.now();
+  const r = await fetchAllRaw(table, query, fields, parallel);
+  (timing.tables ??= {})[table] = {ms: Math.round(performance.now() - t0), rows: r.rows.length};
+  return r;
+}
+
+async function fetchAllRaw(table, query, fields, parallel) {
   const rows = [];
+  const pageUrl = offset => {
+    const p = new URLSearchParams({
+      sysparm_query: `${query}^ORDERBYsys_id`,
+      sysparm_fields: fields,
+      sysparm_limit: String(PAGE),
+      sysparm_offset: String(offset),
+      sysparm_exclude_reference_link: 'true'
+    });
+    return `/api/now/table/${table}?${p}`;
+  };
   try {
     let offset = 0;
     let total = Infinity;
+    if (parallel > 1) {
+      // Large tables: request the first pages together instead of one round trip after another.
+      const first = await Promise.all(Array.from({length: parallel}, (_, i) => getJson(pageUrl(i * PAGE))));
+      first.forEach(pg => rows.push(...pg.rows));
+      total = first[0].total;
+      offset = parallel * PAGE;
+    }
     while (offset < total && offset < 50000) {
-      const p = new URLSearchParams({
-        sysparm_query: `${query}^ORDERBYsys_id`,
-        sysparm_fields: fields,
-        sysparm_limit: String(PAGE),
-        sysparm_offset: String(offset),
-        sysparm_exclude_reference_link: 'true'
-      });
-      const page = await getJson(`/api/now/table/${table}?${p}`);
+      const page = await getJson(pageUrl(offset));
       rows.push(...page.rows);
       total = page.total;
       if (!page.rows.length) break;
@@ -117,14 +136,17 @@ export function loadCatalog(force = false) {
 }
 
 async function build() {
+  const t0 = performance.now();
   const [items, cats, links, ritms, offerings, catalogRows] = await Promise.all([
-    fetchAll('sc_cat_item', 'sys_idISNOTEMPTY', 'sys_id,name,sys_class_name,active,category,short_description,description,icon,picture,sys_created_on,sys_updated_on'),
+    fetchAll('sc_cat_item', 'sys_idISNOTEMPTY', 'sys_id,name,sys_class_name,active,category,short_description,description,icon,picture,owner,group,flow_designer_flow,workflow,delivery_plan,sys_created_on,sys_updated_on', 2),
     fetchAll('sc_category', 'sys_idISNOTEMPTY', 'sys_id,title,parent,active,sc_catalog'),
     fetchAll('sc_cat_item_category', 'sys_idISNOTEMPTY', 'sc_cat_item,sc_category'),
     fetchAll('sc_req_item', 'sys_idISNOTEMPTY', 'cat_item,sys_created_on'),
     fetchAll('service_offering', 'sys_idISNOTEMPTY', 'sys_id,name,operational_status'),
     fetchAll('sc_catalog', 'sys_idISNOTEMPTY', 'sys_id,title')
   ]);
+  timing.totalMs = Math.round(performance.now() - t0);
+  if (typeof window !== 'undefined') window.__catalogTiming = timing;
   if (items.error) throw new Error(items.error);
 
   const catById = new Map(cats.rows.map(c => [c.sys_id, {id: c.sys_id, title: c.title || '(untitled)', parent: val(c.parent), catalog: val(c.sc_catalog), active: c.active === 'true'}]));
@@ -147,6 +169,7 @@ async function build() {
     const direct = val(r.category);
     const extra = linkByItem.get(r.sys_id) || [];
     const catIds = [...new Set([direct, ...extra].filter(c => c && catById.has(c)))];
+    const desc = plain(r.description);
     const flags = {
       shortDescription: !!plain(r.short_description),
       description: !!plain(r.description),
@@ -161,6 +184,12 @@ async function build() {
       cluster: catIds[0] || UNCATEGORISED,
       catIds,
       shortDescription: plain(r.short_description),
+      // text facts for the investigations; the full description is not kept
+      descLen: desc.length,
+      descWords: desc ? desc.split(' ').length : 0,
+      descSnippet: desc.slice(0, 320),
+      nameKey: String(r.name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(),
+      ctx: {owner: !!val(r.owner), group: !!val(r.group), fulfilment: !!(val(r.flow_designer_flow) || val(r.workflow) || val(r.delivery_plan))},
       created: r.sys_created_on || '',
       updated: r.sys_updated_on || '',
       requests: reqCount.get(r.sys_id) || 0,
@@ -288,4 +317,83 @@ export function packGrid(count, cols, step) {
     pts.push({x: ((i % cols) - (inRow - 1) / 2) * step, y: (r - (rows - 1) / 2) * step});
   }
   return {pts, w: cols * step + step, h: rows * step + step};
+}
+
+/* ------------------------------------------------------------------ *
+ * Variables: loaded on demand (the catalog holds ~11k of them), never with the catalog itself
+ * ------------------------------------------------------------------ */
+
+const VAR_FIELDS = 'sys_id,name,question_text,type,mandatory,help_text,hint,cat_item,variable_set,order,active';
+let varStatsCache = null;
+
+/** Item → how many active variables it owns directly and through variable sets. One cached aggregate pass. */
+export function loadVariableStats(force = false) {
+  if (!varStatsCache || force) varStatsCache = buildVariableStats().catch(e => ((varStatsCache = null), Promise.reject(e)));
+  return varStatsCache;
+}
+
+async function stat(table, groupBy, query) {
+  const p = new URLSearchParams({sysparm_count: 'true', sysparm_group_by: groupBy, sysparm_query: query});
+  const r = await aiuxFetch(`/api/now/stats/${table}?${p}`, {headers: {Accept: 'application/json'}});
+  if (!r.ok) throw new Error(`${table} stats: HTTP ${r.status}`);
+  const out = new Map();
+  for (const g of (await r.json())?.result ?? []) {
+    const k = g.groupby_fields?.find(f => f.field === groupBy)?.value;
+    if (k) out.set(k, Number(g.stats?.count) || 0);
+  }
+  return out;
+}
+
+async function buildVariableStats() {
+  const t0 = performance.now();
+  const [direct, perSet, links] = await Promise.all([
+    stat('item_option_new', 'cat_item', 'active=true^cat_itemISNOTEMPTY'),
+    stat('item_option_new', 'variable_set', 'active=true^cat_itemISEMPTY^variable_setISNOTEMPTY'),
+    fetchAll('io_set_item', 'sys_idISNOTEMPTY', 'sc_cat_item,variable_set')
+  ]);
+  if (links.error) throw new Error(links.error);
+  const setsOfItem = new Map();
+  for (const l of links.rows) {
+    const i = val(l.sc_cat_item);
+    if (!setsOfItem.has(i)) setsOfItem.set(i, new Set());
+    setsOfItem.get(i).add(val(l.variable_set));
+  }
+  const items = new Map();
+  const ids = new Set([...direct.keys(), ...setsOfItem.keys()]);
+  for (const id of ids) {
+    const sets = [...(setsOfItem.get(id) || [])];
+    const viaSets = sets.reduce((n, s) => n + (perSet.get(s) || 0), 0);
+    items.set(id, {direct: direct.get(id) || 0, viaSets, sets: sets.length, total: (direct.get(id) || 0) + viaSets});
+  }
+  return {items, setsOfItem, ms: Math.round(performance.now() - t0)};
+}
+
+const varCache = new Map();
+/** The actual variables behind one catalog item (its own plus those from its variable sets). */
+export function loadItemVariables(itemId) {
+  if (!varCache.has(itemId)) {
+    varCache.set(itemId, buildItemVariables(itemId).catch(e => (varCache.delete(itemId), Promise.reject(e))));
+  }
+  return varCache.get(itemId);
+}
+
+async function buildItemVariables(itemId) {
+  const stats = await loadVariableStats();
+  const sets = [...(stats.setsOfItem.get(itemId) || [])];
+  const q = sets.length ? `active=true^cat_item=${itemId}^ORvariable_setIN${sets.join(',')}` : `active=true^cat_item=${itemId}`;
+  const r = await fetchAll('item_option_new', q, VAR_FIELDS);
+  if (r.error) throw new Error(r.error);
+  return r.rows
+    .map(v => ({
+      id: v.sys_id,
+      name: v.name || '',
+      label: plain(v.question_text),
+      type: v.type,
+      mandatory: v.mandatory === 'true',
+      help: plain(v.help_text),
+      hint: plain(v.hint),
+      order: Number(v.order) || 0,
+      fromSet: !val(v.cat_item) && !!val(v.variable_set)
+    }))
+    .sort((a, b) => a.order - b.order);
 }
