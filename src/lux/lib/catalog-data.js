@@ -75,6 +75,41 @@ export const CRITERIA = [
   {key: 'category', label: () => i18n.getMessage('Category')}
 ];
 
+/**
+ * Metrics for any set of items (all of them, or one category's). Every figure
+ * is a plain count over the given nodes, so scoped and global numbers share
+ * one definition.
+ */
+export function scopeStats(nodes) {
+  const missing = Object.fromEntries(CRITERIA.map(c => [c.key, 0]));
+  const byFields = [0, 0, 0, 0, 0]; // items having 0..4 of the four fields
+  const classes = {};
+  let active = 0;
+  let requestedItems = 0;
+  let requests = 0;
+  for (const n of nodes) {
+    if (n.active) active++;
+    if (n.requests) requestedItems++;
+    requests += n.requests;
+    classes[n.cls] = (classes[n.cls] || 0) + 1;
+    let have = 0;
+    for (const c of CRITERIA) n.flags[c.key] ? have++ : missing[c.key]++;
+    byFields[have]++;
+  }
+  return {
+    items: nodes.length,
+    active,
+    inactive: nodes.length - active,
+    requestedItems,
+    requests,
+    missing,
+    byFields,
+    complete: byFields[CRITERIA.length],
+    uncategorised: missing.category,
+    classes
+  };
+}
+
 let cache = null;
 export function loadCatalog(force = false) {
   if (!cache || force) cache = build();
@@ -130,6 +165,7 @@ async function build() {
       updated: r.sys_updated_on || '',
       requests: reqCount.get(r.sys_id) || 0,
       flags,
+      fields: CRITERIA.filter(c => flags[c.key]).length,
       score: CRITERIA.filter(c => flags[c.key]).length / CRITERIA.length
     };
   });
@@ -154,25 +190,18 @@ async function build() {
     clusters.get(n.cluster).items.push(n);
   }
 
-  const classes = {};
-  nodes.forEach(n => (classes[n.cls] = (classes[n.cls] || 0) + 1));
   const years = nodes.map(n => Number(n.created.slice(0, 4))).filter(Boolean);
 
   return {
     nodes,
     catTitle: Object.fromEntries([...catById.values()].map(c => [c.id, label(c)])),
     clusters: [...clusters.values()].sort((a, b) => b.items.length - a.items.length),
+    // Global metrics are the same function applied to every item, so a scoped
+    // view (one category) can never disagree with the global one in method.
     stats: {
-      items: nodes.length,
-      active: nodes.filter(n => n.active).length,
+      ...scopeStats(nodes),
       categories: cats.rows.length,
       populatedCategories: [...clusters.values()].filter(c => !c.uncategorised).length,
-      uncategorised: nodes.filter(n => !n.flags.category).length,
-      missing: Object.fromEntries(CRITERIA.map(c => [c.key, nodes.filter(n => !n.flags[c.key]).length])),
-      complete: nodes.filter(n => n.score === 1).length,
-      classes,
-      requestedItems: reqCount.size,
-      requests: ritms.rows.length,
       lastRequest,
       minYear: years.length ? Math.min(...years) : null,
       maxYear: years.length ? Math.max(...years) : null,

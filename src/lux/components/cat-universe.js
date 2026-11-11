@@ -5,9 +5,15 @@ import {guard} from 'lit/directives/guard.js';
 import {repeat} from 'lit/directives/repeat.js';
 import {AIUXElement} from '@servicenow/aiux/aiux-components-core';
 import {i18n} from '@servicenow/aiux/aiux-services';
-import {CRITERIA, classLabel, loadCatalog, packCircles, packGrid, packItems} from '../lib/catalog-data.js';
+import {CRITERIA, classLabel, loadCatalog, packCircles, packGrid, packItems, scopeStats} from '../lib/catalog-data.js';
 
-const CLASS_COLORS = ['#2F6FED', '#0E9F8E', '#F2994A', '#8B5CF6', '#E5484D', '#12A150', '#D6409F', '#64748B', '#B7791F', '#0891B2', '#7C8DA6', '#A3A3A3'];
+/* Categorical palette for item types: deliberately contains no red or green, which are reserved for status. */
+const CLASS_COLORS = ['#2F6FED', '#0E9F8E', '#F2994A', '#8B5CF6', '#0891B2', '#D6409F', '#64748B', '#B7791F', '#4F46E5', '#84A98C', '#7C8DA6', '#A3A3A3'];
+/* Completeness: number of the four fields present, 0 → 4. Red is only for the genuinely empty. */
+const FIELD_COLORS = ['#E5484D', '#F2812F', '#F2B134', '#0E9F8E', '#12A150'];
+const REQUESTED = '#2F6FED';
+const NO_REQUESTS = '#C3CEDC';
+const INACTIVE_STROKE = '#64748B';
 const AMBER = '#F08A24';
 const SOFT = '#D5DEEA';
 const LENSES = [
@@ -32,7 +38,6 @@ const mix = (c1, c2, t) => {
   const [a, b] = [p(c1), p(c2)];
   return '#' + a.map((v, i) => Math.round(lerp(v, b[i], t)).toString(16).padStart(2, '0')).join('');
 };
-const qualityColor = s => (s >= 0.75 ? mix('#F2B134', '#12A150', (s - 0.75) * 4) : mix('#E5484D', '#F2B134', s / 0.75));
 const trunc = (s, max) => (s.length > max ? s.slice(0, Math.max(1, max - 1)).trimEnd() + '…' : s);
 const fmt = n => new Intl.NumberFormat().format(n);
 
@@ -81,6 +86,13 @@ export default class CatUniverse extends AIUXElement {
       height: 100%;
       display: block;
       touch-action: none;
+      cursor: grab;
+    }
+    svg.universe.panning {
+      cursor: grabbing;
+    }
+    svg.universe.panning * {
+      cursor: grabbing;
     }
 
     /* ---------- universe ---------- */
@@ -127,12 +139,19 @@ export default class CatUniverse extends AIUXElement {
       stroke-width: 1.5;
     }
     .dot.dim {
-      opacity: 0.2;
+      opacity: 0.6;
     }
     .dot:focus-visible {
       stroke: #032d42;
       stroke-width: 2.4;
       outline: none;
+    }
+    .match {
+      fill: none;
+      stroke: #7c3aed;
+      stroke-width: 1.6;
+      stroke-dasharray: 2.4 2;
+      pointer-events: none;
     }
     .ring {
       fill: none;
@@ -216,7 +235,8 @@ export default class CatUniverse extends AIUXElement {
       gap: 8px 12px;
       align-items: center;
       justify-content: space-between;
-      padding: 0 2px 10px;
+      /* room for the 3px + 2px focus outlines so none is clipped by an ancestor */
+      padding: 6px 7px 12px;
     }
     .lenses {
       display: inline-flex;
@@ -248,7 +268,7 @@ export default class CatUniverse extends AIUXElement {
     }
     .lens-btn:focus-visible,
     .chip:focus-visible,
-    .search input:focus-visible,
+    .zbtn:focus-visible,
     .close:focus-visible,
     .res:focus-visible,
     .pill:focus-visible,
@@ -271,6 +291,14 @@ export default class CatUniverse extends AIUXElement {
       font-size: 0.8125rem;
       background: #fff;
       color: #1b1b1b;
+    }
+    /* inset ring: cannot be clipped by any ancestor, still a >=3:1 visible indicator */
+    .search input:focus,
+    .search input:focus-visible {
+      outline: 2px solid #2f6fed;
+      outline-offset: -2px;
+      border-color: #2f6fed;
+      box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.18);
     }
     .glass {
       background: rgba(255, 255, 255, 0.86);
@@ -354,7 +382,8 @@ export default class CatUniverse extends AIUXElement {
       gap: 10px;
       pointer-events: none;
     }
-    .dock > * {
+    .dock > *,
+    .dock-l > * {
       pointer-events: auto;
     }
     .pill {
@@ -378,11 +407,20 @@ export default class CatUniverse extends AIUXElement {
     .pill[aria-expanded='true'] .caret {
       transform: rotate(180deg);
     }
+    .dock-l {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+      min-width: 0;
+      max-width: 100%;
+    }
     .sheet {
       position: absolute;
-      left: 12px;
-      bottom: 62px;
-      width: min(360px, calc(100% - 24px));
+      left: 0;
+      bottom: calc(100% + 6px);
+      width: min(360px, calc(100vw - 48px));
       padding: 14px 16px;
       font-size: 0.8125rem;
       color: #1b1b1b;
@@ -449,15 +487,82 @@ export default class CatUniverse extends AIUXElement {
     .legend {
       display: flex;
       flex-wrap: wrap;
-      gap: 4px 12px;
-      margin-top: 8px;
+      gap: 3px 12px;
+      margin: 0;
+      padding: 0.4rem 0.8rem;
+      list-style: none;
+      font-size: 0.75rem;
+      color: #3b3a38;
+      max-width: min(560px, 100%);
     }
-    .legend span {
+    .legend li {
       display: inline-flex;
       align-items: center;
       gap: 5px;
+    }
+    .legend .note {
+      color: #656462;
+    }
+    .sw.grad {
+      width: 44px;
+      border-radius: 99px;
+    }
+    .sw.hollow {
+      background: #fff;
+      border: 2px solid #64748b;
+      box-sizing: border-box;
+    }
+    .sw.match {
+      background: #fff;
+      border: 2px dashed #7c3aed;
+      box-sizing: border-box;
+    }
+    .sw.sel {
+      background: #fff;
+      border: 2px solid #032d42;
+      box-sizing: border-box;
+    }
+    .scope-note {
+      margin: 6px 0 0;
       font-size: 0.75rem;
-      color: #4d4c4a;
+      color: #656462;
+    }
+
+    /* ---------- zoom and pan controls ---------- */
+    .zoom {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: grid;
+      grid-template-columns: repeat(3, 32px);
+      grid-auto-rows: 32px;
+      gap: 2px;
+      padding: 4px;
+      z-index: 2;
+      transition: right 0.35s ease;
+    }
+    .zoom.shift {
+      right: calc(min(340px, 100% - 24px) + 24px);
+    }
+    .zbtn {
+      border: 0;
+      border-radius: 0.6rem;
+      background: transparent;
+      color: #032d42;
+      font: inherit;
+      font-size: 1rem;
+      font-weight: 600;
+      line-height: 1;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+    }
+    .zbtn:hover {
+      background: rgba(47, 111, 237, 0.1);
+    }
+    .zbtn:disabled {
+      opacity: 0.35;
+      cursor: default;
     }
     .sw {
       width: 10px;
@@ -590,8 +695,8 @@ export default class CatUniverse extends AIUXElement {
       color: #0d6b36;
     }
     .tag.off {
-      background: #fdebec;
-      color: #a1171b;
+      background: #eef1f5;
+      color: #4d5b6b;
     }
     .detail dl {
       margin: 0;
@@ -701,6 +806,9 @@ export default class CatUniverse extends AIUXElement {
       }
     }
     @container (max-width: 700px) {
+      .zoom.shift {
+        right: 12px;
+      }
       .detail {
         top: auto;
         height: 56%;
@@ -731,6 +839,9 @@ export default class CatUniverse extends AIUXElement {
     this._searchOpen = false;
     this._legendOpen = false;
     this._narrow = false;
+    this._drag = null;
+    this._justDragged = false;
+    this._scopeCache = new Map();
     this._cam = {x: 0, y: 0, w: 1000};
     this._anim = 0;
     this._layout = null;
@@ -742,6 +853,7 @@ export default class CatUniverse extends AIUXElement {
       else if (this._selected) this._selected = null;
       else if (this._focus) this._focusCluster(null);
     };
+    this._onWheel = e => this._wheel(e);
     this._onPop = () => {
       const id = this._hashFocus();
       if (id !== this._focus) this._focusCluster(id, false, true);
@@ -943,14 +1055,14 @@ export default class CatUniverse extends AIUXElement {
     switch (this._lens) {
       case 'quality':
         if (this._gap) return n.flags[this._gap] ? SOFT : AMBER;
-        return qualityColor(n.score);
+        return FIELD_COLORS[n.fields];
       case 'lifecycle': {
         const {minYear, maxYear} = this._model.stats;
         const t = maxYear > minYear ? (Number(n.created.slice(0, 4)) - minYear) / (maxYear - minYear) : 1;
         return n.active ? mix('#B8C7DC', '#2F6FED', t) : '#ffffff';
       }
       case 'demand':
-        return n.requests ? AMBER : '#CBD5E1';
+        return n.requests ? REQUESTED : NO_REQUESTS;
       case 'csdm':
         return '#B8C7DC';
       default:
@@ -971,12 +1083,12 @@ export default class CatUniverse extends AIUXElement {
 
   /** The most significant verified gap: the criterion with the most missing items. */
   _story() {
-    const s = this._model.stats;
+    const s = this._scope().stats;
     const total = s.items;
     const top = CRITERIA.map(c => ({key: c.key, miss: s.missing[c.key]})).sort((a, b) => b.miss - a.miss)[0];
     if (!top || !top.miss) return null;
     let worst = null;
-    for (const c of this._layout.packed) {
+    for (const c of this._focus ? [] : this._layout.packed) {
       if (c.cluster.uncategorised) continue;
       const m = c.cluster.items.filter(n => !n.flags[top.key]).length;
       if (m > (worst?.m ?? 0)) worst = {title: c.cluster.title, m, n: c.cluster.items.length};
@@ -984,8 +1096,120 @@ export default class CatUniverse extends AIUXElement {
     return {key: top.key, miss: top.miss, pct: Math.round((100 * top.miss) / total), total, worst};
   }
 
+  /**
+   * Items and metrics for what is on screen: the focused category's own dots,
+   * or the whole catalog. Items that belong to several categories are drawn
+   * (and counted) once, in their primary category; `alsoIn` reports the others.
+   */
+  _scope() {
+    const key = this._focus || '*';
+    let v = this._scopeCache.get(key);
+    if (!v) {
+      const c = this._focus ? this._layout.byId.get(this._focus) : null;
+      const nodes = c ? c.cluster.items : this._model.nodes;
+      v = {
+        nodes,
+        stats: scopeStats(nodes),
+        title: c ? c.cluster.title : null,
+        alsoIn: c && !c.cluster.uncategorised ? this._model.nodes.filter(n => n.cluster !== key && n.catIds.includes(key)).length : 0
+      };
+      this._scopeCache.set(key, v);
+    }
+    return v;
+  }
+
+  /* ---------- camera: wheel, drag, buttons, keys ---------- */
+  _clampCam(cam) {
+    const {minX, maxX, minY, maxY} = this._layout.bounds;
+    const mx = (maxX - minX) * 0.15;
+    const my = (maxY - minY) * 0.15;
+    return {
+      x: Math.min(maxX + mx, Math.max(minX - mx, cam.x)),
+      y: Math.min(maxY + my, Math.max(minY - my, cam.y)),
+      w: Math.min(this._fitAll().w * 1.6, Math.max(40, cam.w))
+    };
+  }
+
+  _wheel(e) {
+    if (this.compact || !this._layout) return;
+    e.preventDefault();
+    cancelAnimationFrame(this._anim);
+    const {w: W, h: H} = this._stageSize();
+    const r = this.renderRoot.querySelector('.stage').getBoundingClientRect();
+    const px = e.clientX - r.left;
+    const py = e.clientY - r.top;
+    const unit = e.deltaMode === 1 ? 0.05 : 0.0015;
+    const cam = this._cam;
+    const w2 = Math.min(this._fitAll().w * 1.6, Math.max(40, cam.w * Math.exp(e.deltaY * unit * (e.ctrlKey ? 3 : 1))));
+    const ch = (cam.w * H) / W;
+    const wx = cam.x - cam.w / 2 + (px / W) * cam.w;
+    const wy = cam.y - ch / 2 + (py / H) * ch;
+    const ch2 = (w2 * H) / W;
+    this._cam = this._clampCam({x: wx - (px / W - 0.5) * w2, y: wy - (py / H - 0.5) * ch2, w: w2});
+    this._hover = null;
+    this._applyCam();
+  }
+
+  _onDown(e) {
+    if (this.compact || e.button !== 0 || !e.isPrimary) return;
+    this._drag = {id: e.pointerId, x: e.clientX, y: e.clientY, cam: {...this._cam}, moved: false};
+  }
+
+  _dragMove(e) {
+    const d = this._drag;
+    if (!d || d.id !== e.pointerId) return false;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    if (!d.moved) {
+      if (Math.hypot(dx, dy) < 5) return false; // below the threshold it is still a click
+      d.moved = true;
+      cancelAnimationFrame(this._anim);
+      const svgEl = this.renderRoot.querySelector('svg.universe');
+      try {
+        svgEl.setPointerCapture(e.pointerId);
+      } catch {
+        /* capture is an optimisation; panning still works without it */
+      }
+      svgEl.classList.add('panning');
+      this._hover = null;
+    }
+    const k = d.cam.w / this._stageSize().w;
+    this._cam = this._clampCam({x: d.cam.x - dx * k, y: d.cam.y - dy * k, w: d.cam.w});
+    this._applyCam();
+    return true;
+  }
+
+  _onUp(e) {
+    const d = this._drag;
+    if (!d || d.id !== e.pointerId) return;
+    this._drag = null;
+    this.renderRoot.querySelector('svg.universe')?.classList.remove('panning');
+    if (d.moved) {
+      // the click that follows a drag must not select anything
+      this._justDragged = true;
+      setTimeout(() => (this._justDragged = false), 0);
+    }
+  }
+
+  _zoomBy(factor) {
+    const c = this._cam;
+    this._flyTo(this._clampCam({...c, w: c.w * factor}), 240);
+  }
+
+  _panBy(fx, fy) {
+    const {w, h} = this._stageSize();
+    const c = this._cam;
+    this._flyTo(this._clampCam({x: c.x + fx * c.w, y: c.y + (fy * c.w * h) / w, w: c.w}), 240);
+  }
+
+  _resetView() {
+    if (this._focus) this._focusCluster(this._focus, true);
+    else this._flyTo(this._fitAll(), 900);
+  }
+
   /* ---------- events ---------- */
   _onSvgClick(e) {
+    if (this._justDragged) return;
     const t = e.target.closest?.('[data-item],[data-cluster]');
     if (!t) {
       if (this._selected) this._selected = null;
@@ -1000,6 +1224,12 @@ export default class CatUniverse extends AIUXElement {
   }
 
   _onSvgKey(e) {
+    const k = {'+': () => this._zoomBy(0.7), '=': () => this._zoomBy(0.7), '-': () => this._zoomBy(1.4), _: () => this._zoomBy(1.4), 0: () => this._resetView(),
+      ArrowLeft: () => this._panBy(-0.18, 0), ArrowRight: () => this._panBy(0.18, 0), ArrowUp: () => this._panBy(0, -0.18), ArrowDown: () => this._panBy(0, 0.18)}[e.key];
+    if (k && !this.compact && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      return k();
+    }
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const t = e.target.closest?.('[data-item],[data-cluster]');
     if (!t) return;
@@ -1008,7 +1238,7 @@ export default class CatUniverse extends AIUXElement {
   }
 
   _onMove(e) {
-    if (this.compact) return;
+    if (this.compact || this._dragMove(e) || this._drag?.moved) return;
     const t = e.target.closest?.('[data-item],[data-cluster]');
     if (!t) {
       if (this._hover) this._hover = null;
@@ -1044,24 +1274,44 @@ export default class CatUniverse extends AIUXElement {
       ${this.compact ? nothing : this._renderBar()}
       <div class="stage">
         ${this._narrow ? html`<div class="state" role="status"><small>${i18n.getMessage('Not enough room here. Collapse the sidebar or widen the window.')}</small></div>` : nothing}
-        ${guard([this._model, this._lens, this._gap, this._focus, this._selected, this.compact], () => this._renderSvg())}
-        ${this.compact ? this._renderEnter() : html`${this._renderCrumbs()}${this._selected ? this._renderDetail() : nothing}${this._renderDock()}`}
+        ${guard([this._model, this._lens, this._gap, this._focus, this._selected, this.compact, this._matchKey()], () => this._renderSvg())}
+        ${this.compact ? this._renderEnter() : html`${this._renderCrumbs()}${this._renderZoom()}${this._selected ? this._renderDetail() : nothing}${this._renderDock()}`}
         ${this._hover ? this._renderTip() : nothing}
         <div class="vh" aria-live="polite">${this._focus ? i18n.getMessage('Exploring {0}', this._layout.titles.get(this._focus)) : nothing}</div>
       </div>
     `;
   }
 
+  _matchKey() {
+    return this._searchOpen ? this._query.trim().toLowerCase() : '';
+  }
+
+  _renderZoom() {
+    const b = (label, glyph, fn) => html`<button class="zbtn" aria-label=${label} title=${label} @click=${fn}>${glyph}</button>`;
+    return html`<div class="zoom glass ${classMap({shift: !!this._selected})}" role="group" aria-label=${i18n.getMessage('Zoom and pan')}>
+      ${b(i18n.getMessage('Zoom in'), '+', () => this._zoomBy(0.6))}
+      ${b(i18n.getMessage('Pan up'), '↑', () => this._panBy(0, -0.2))}
+      ${b(i18n.getMessage('Zoom out'), '−', () => this._zoomBy(1.6))}
+      ${b(i18n.getMessage('Pan left'), '←', () => this._panBy(-0.2, 0))}
+      ${b(i18n.getMessage('Reset view'), '⌂', this._resetView.bind(this))}
+      ${b(i18n.getMessage('Pan right'), '→', () => this._panBy(0.2, 0))}
+      <span></span>${b(i18n.getMessage('Pan down'), '↓', () => this._panBy(0, 0.2))}<span></span>
+    </div>`;
+  }
+
   _renderSvg() {
     const L = this._layout;
+    const mk = this._matchKey();
+    const matchIds = new Set(mk.length >= 2 ? this._model.nodes.filter(n => n.name.toLowerCase().includes(mk)).slice(0, 8).map(n => n.id) : []);
     return html`<svg class="universe ${classMap({'has-focus': !!this._focus})}" role="group"
       aria-label=${i18n.getMessage('Catalog universe: {0} items in {1} groups', String(this._model.stats.items), String(L.packed.length))}
-      @click=${this._onSvgClick} @keydown=${this._onSvgKey} @pointermove=${this._onMove} @pointerleave=${() => (this._hover = null)}>
-      ${repeat(L.packed, c => c.id, (c, i) => this._renderCluster(c, i))}
+      @click=${this._onSvgClick} @keydown=${this._onSvgKey} @pointerdown=${this._onDown} @pointermove=${this._onMove}
+      @pointerup=${this._onUp} @pointercancel=${this._onUp} @wheel=${this._onWheel} @pointerleave=${() => (this._hover = null)}>
+      ${repeat(L.packed, c => c.id, (c, i) => this._renderCluster(c, i, matchIds))}
     </svg>`;
   }
 
-  _renderCluster(c, idx) {
+  _renderCluster(c, idx, matchIds) {
     const on = this._focus === c.id;
     const interactive = !this.compact;
     const count = c.items.length;
@@ -1087,11 +1337,12 @@ export default class CatUniverse extends AIUXElement {
         const hollow = this._lens === 'lifecycle' && !n.active;
         const dim = (this._lens === 'demand' && !n.requests) || false;
         return svg`<circle class="dot ${classMap({hollow, dim})}"
-          style="cx:${on ? it.xx : it.x}px;cy:${on ? it.yy : it.y}px;r:${isSel ? 6.8 : dotR}px;fill:${this._fill(n)};${hollow ? 'stroke:#2F6FED;' : ''}${isSel ? 'stroke:#032D42;stroke-width:2.2;' : ''}"
+          style="cx:${on ? it.xx : it.x}px;cy:${on ? it.yy : it.y}px;r:${isSel ? 6.8 : dotR}px;fill:${this._fill(n)};${hollow ? `stroke:${INACTIVE_STROKE};` : ''}${isSel ? 'stroke:#032D42;stroke-width:2.2;' : ''}"
           data-item=${n.id} data-cluster=${c.id}
           tabindex=${interactive && on ? 0 : -1} role=${interactive && on ? 'button' : 'presentation'}
           aria-label=${interactive && on ? n.name : nothing}></circle>`;
       })}
+      ${c.items.filter(it => matchIds.has(it.n.id)).map(it => svg`<circle class="match" style="cx:${on ? it.xx : it.x}px;cy:${on ? it.yy : it.y}px;r:${dotR + 3}px"></circle>`)}
       ${ring}
       ${c.labeled
         ? svg`<text class="lbl" data-fs=${c.fs} x=${c.x} y=${c.y + c.halo + c.fs * 1.25} font-size=${c.fs}>${trunc(c.cluster.title, 24)}</text>
@@ -1184,26 +1435,72 @@ export default class CatUniverse extends AIUXElement {
     </aside>`;
   }
 
-  /* bottom dock: collapsed lens summary (left) + one verified opportunity (right) */
+  /* bottom dock: legend + collapsed lens summary (left), one verified opportunity (right) */
   _renderDock() {
-    const s = this._model.stats;
+    const sc = this._scope();
+    const s = sc.stats;
+    const g = this._model.stats;
     const story = this._selected ? null : this._story();
     const summary = {
-      overview: () => i18n.getMessage('{0} items · {1} categories', fmt(s.items), fmt(s.populatedCategories)),
-      quality: () => i18n.getMessage('{0} items fully described', fmt(s.complete)),
-      lifecycle: () => i18n.getMessage('{0} active · {1} inactive', fmt(s.active), fmt(s.items - s.active)),
-      demand: () => i18n.getMessage('{0} items requested', fmt(s.requestedItems)),
-      csdm: () => i18n.getMessage('{0} service offerings', s.offerings == null ? '—' : fmt(s.offerings))
+      overview: () => (sc.title ? i18n.getMessage('{0} items in this category', fmt(s.items)) : i18n.getMessage('{0} items · {1} categories', fmt(s.items), fmt(g.populatedCategories))),
+      quality: () => i18n.getMessage('{0} of {1} items fully described', fmt(s.complete), fmt(s.items)),
+      lifecycle: () => i18n.getMessage('{0} active · {1} inactive', fmt(s.active), fmt(s.inactive)),
+      demand: () => i18n.getMessage('{0} of {1} items requested', fmt(s.requestedItems), fmt(s.items)),
+      csdm: () => i18n.getMessage('{0} service offerings on the instance', g.offerings == null ? '—' : fmt(g.offerings))
     }[this._lens]();
     const lens = LENSES.find(l => l.id === this._lens);
     return html`
-      ${this._legendOpen ? this._renderSheet() : nothing}
       <div class="dock">
-        <button class="pill glass" aria-expanded=${this._legendOpen} @click=${() => { this._legendOpen = !this._legendOpen; }}>
-          <b>${lens.label()}</b> ${summary} <span class="caret" aria-hidden="true">▴</span>
-        </button>
-        ${story && !this._focus ? this._renderStory(story) : nothing}
+        <div class="dock-l">
+          ${this._legendOpen ? this._renderSheet(sc) : nothing}
+          ${this._renderLegend(sc)}
+          <button class="pill glass" aria-expanded=${this._legendOpen} @click=${() => { this._legendOpen = !this._legendOpen; }}>
+            <b>${lens.label()}</b>${sc.title ? html`<span class="vh">${sc.title}</span>` : nothing} ${summary} <span class="caret" aria-hidden="true">▴</span>
+          </button>
+        </div>
+        ${story ? this._renderStory(story) : nothing}
       </div>`;
+  }
+
+  /** Compact key for the active lens, counted over the same items the dock summarises. */
+  _renderLegend(sc) {
+    const s = sc.stats;
+    const g = this._model.stats;
+    const sw = (color, text, cls = '') => html`<li><i class="sw ${cls}" style="background:${color}"></i>${text}</li>`;
+    let items;
+    switch (this._lens) {
+      case 'quality':
+        if (this._gap) {
+          const label = CRITERIA.find(c => c.key === this._gap).label();
+          items = [sw(AMBER, i18n.getMessage('Missing {0} · {1}', label.toLowerCase(), fmt(s.missing[this._gap]))), sw(SOFT, i18n.getMessage('Present · {0}', fmt(s.items - s.missing[this._gap])))];
+        } else {
+          items = [html`<li class="note">${i18n.getMessage('Fields present, of 4')}</li>`, ...FIELD_COLORS.map((c, i) => sw(c, `${i} · ${fmt(s.byFields[i])}`))];
+        }
+        break;
+      case 'lifecycle':
+        items = [
+          html`<li><i class="sw grad" style="background:linear-gradient(90deg,#B8C7DC,#2F6FED)"></i>${i18n.getMessage('Active, by year created {0}–{1}', String(g.minYear), String(g.maxYear))}</li>`,
+          html`<li><i class="sw hollow"></i>${i18n.getMessage('Inactive · {0}', fmt(s.inactive))}</li>`
+        ];
+        break;
+      case 'demand':
+        items = [sw(REQUESTED, i18n.getMessage('Requested · {0}', fmt(s.requestedItems))), sw(NO_REQUESTS, i18n.getMessage('No requests observed · {0}', fmt(s.items - s.requestedItems))),
+          html`<li class="note">${i18n.getMessage('Not an error: many items are simply not in demand')}</li>`];
+        break;
+      case 'csdm':
+        items = [sw('#B8C7DC', i18n.getMessage('Catalog item')), html`<li class="note">${i18n.getMessage('Offerings are not linked to items natively, so nothing is marked as missing')}</li>`];
+        break;
+      default: {
+        const types = Object.entries(s.classes).sort((a, b) => b[1] - a[1]);
+        items = [...types.slice(0, 5).map(([c, n]) => sw(CLASS_COLORS[this._classIndex(c)], `${classLabel(c)} · ${fmt(n)}`)),
+          types.length > 5 ? html`<li class="note">${i18n.getMessage('+{0} more types', String(types.length - 5))}</li>` : nothing];
+      }
+    }
+    return html`<ul class="legend glass" aria-label=${i18n.getMessage('Legend')}>
+      ${items}
+      ${this._selected ? html`<li><i class="sw sel"></i>${i18n.getMessage('Selected')}</li>` : nothing}
+      ${this._matchKey().length >= 2 ? html`<li><i class="sw match"></i>${i18n.getMessage('Search match')}</li>` : nothing}
+    </ul>`;
   }
 
   _renderStory(st) {
@@ -1217,9 +1514,13 @@ export default class CatUniverse extends AIUXElement {
     </div>`;
   }
 
-  _renderSheet() {
-    const s = this._model.stats;
+  _renderSheet(sc) {
+    const s = sc.stats;
+    const g = this._model.stats;
     const total = s.items;
+    const scopeLine = sc.title ? html`<p class="scope-note">${i18n.getMessage('Showing {0} only.', sc.title)}
+      ${sc.alsoIn ? i18n.getMessage('{0} items that also belong to it are drawn and counted in their primary category.', fmt(sc.alsoIn)) : nothing}</p>`
+      : html`<p class="scope-note">${i18n.getMessage('Showing all categories.')}</p>`;
     let body;
     switch (this._lens) {
       case 'quality':
@@ -1227,33 +1528,29 @@ export default class CatUniverse extends AIUXElement {
           <p><span class="big">${fmt(s.complete)}</span> ${i18n.getMessage('of {0} items have all four fields. Select a field to highlight what is missing.', fmt(total))}</p>
           ${CRITERIA.map(c => html`<button class="row-btn" aria-pressed=${this._gap === c.key} @click=${() => { this._gap = this._gap === c.key ? null : c.key; }}>
             <span class="row"><span>${c.label()}</span><span>${i18n.getMessage('{0} missing', fmt(s.missing[c.key]))}</span></span>
-            <div class="track"><div class="fill" style="width:${100 - (100 * s.missing[c.key]) / total}%"></div></div></button>`)}
-          ${this._gap ? nothing : html`<div class="ramp" style="background:linear-gradient(90deg,#E5484D,#F2B134,#12A150)"></div>
-          <div class="ramp-lbl"><span>${i18n.getMessage('0 of 4')}</span><span>${i18n.getMessage('4 of 4')}</span></div>`}`;
+            <div class="track"><div class="fill" style="width:${100 - (100 * s.missing[c.key]) / total}%"></div></div></button>`)}`;
         break;
       case 'lifecycle':
         body = html`<h3>${i18n.getMessage('Lifecycle')}</h3>
-          <p><span class="big">${fmt(s.active)}</span> ${i18n.getMessage('active · {0} inactive (hollow)', fmt(total - s.active))}</p>
-          <div class="ramp" style="background:linear-gradient(90deg,#B8C7DC,#2F6FED)"></div>
-          <div class="ramp-lbl"><span>${s.minYear}</span><span>${s.maxYear}</span></div>`;
+          <p><span class="big">${fmt(s.active)}</span> ${i18n.getMessage('active · {0} inactive (hollow)', fmt(s.inactive))}</p>`;
         break;
       case 'demand':
         body = html`<h3>${i18n.getMessage('Demand')}</h3>
           <p><span class="big">${fmt(s.requestedItems)}</span> ${i18n.getMessage('items requested · {0} request items in total', fmt(s.requests))}</p>
-          <p>${i18n.getMessage('{0}% of items have never been requested in the records available.', String(Math.round((100 * (total - s.requestedItems)) / total)))}</p>`;
+          <p>${i18n.getMessage('{0} of {1} items have no requests in the records available. That describes demand, not a defect.', fmt(total - s.requestedItems), fmt(total))}</p>`;
         break;
       case 'csdm':
         body = html`<h3>${i18n.getMessage('CSDM alignment')}</h3>
-          <p><span class="big">${s.offerings == null ? '—' : fmt(s.offerings)}</span> ${i18n.getMessage('service offerings exist on this instance')}</p>
-          <p>${i18n.getMessage('Catalog items do not carry a native service offering link here, so no alignment is shown. Suggestions will come in a later milestone.')}</p>`;
+          <p><span class="big">${g.offerings == null ? '—' : fmt(g.offerings)}</span> ${i18n.getMessage('service offerings exist on this instance (instance-wide, not per category)')}</p>
+          <p>${i18n.getMessage('Verified item-to-offering links: 0. Catalog items carry no native service offering reference here, so no item is marked as unaligned. Candidate matches will be proposed for review in a later milestone.')}</p>`;
         break;
       default: {
         const order = Object.entries(s.classes).sort((a, b) => b[1] - a[1]);
         body = html`<h3>${i18n.getMessage('Item types')}</h3>
-          <p><span class="big">${fmt(total)}</span> ${i18n.getMessage('items in {0} categories', fmt(s.populatedCategories))}${s.uncategorised ? i18n.getMessage(' · {0} not yet in a category', fmt(s.uncategorised)) : nothing}</p>
-          <div class="legend">${order.slice(0, 8).map(([c, n], i) => html`<span><i class="sw" style="background:${CLASS_COLORS[Math.min(i, CLASS_COLORS.length - 1)]}"></i>${classLabel(c)} ${fmt(n)}</span>`)}</div>`;
+          <p><span class="big">${fmt(total)}</span> ${sc.title ? i18n.getMessage('items in this category') : i18n.getMessage('items in {0} categories', fmt(g.populatedCategories))}${!sc.title && s.uncategorised ? i18n.getMessage(' · {0} not yet in a category', fmt(s.uncategorised)) : nothing}</p>
+          <p>${i18n.getMessage('Item types in scope: {0}', fmt(order.length))}</p>`;
       }
     }
-    return html`<section class="sheet glass" aria-label=${i18n.getMessage('Lens details')}>${body}</section>`;
+    return html`<section class="sheet glass" aria-label=${i18n.getMessage('Lens details')}>${body}${scopeLine}</section>`;
   }
 }
