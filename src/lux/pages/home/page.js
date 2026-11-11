@@ -1,110 +1,104 @@
-import {html, css} from 'lit';
+import {html, css, nothing} from 'lit';
 import {customElement} from 'lit/decorators.js';
 import {AIUXElement} from '@servicenow/aiux/aiux-components-core';
+import {navigate} from '@servicenow/aiux/aiux-client';
 import {i18n} from '@servicenow/aiux/aiux-services';
-import './components/aiux-feature-card.js';
+import {loadCatalog} from '../../lib/catalog-data.js';
+import '../../components/cat-universe.js';
 
 @customElement('x-snc-catalogintel-home-page')
 export default class HomePage extends AIUXElement {
-  // Layout, color, and spacing all come from DaisyUI components + Tailwind
-  // utilities below; `static styles` is reserved for `:host` only.
+  static properties = {
+    _stats: {state: true}
+  };
+
   static styles = css`
     :host {
       display: block;
     }
+    .hero-universe {
+      height: clamp(340px, 52vh, 560px);
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .rise {
+        animation: rise 0.7s ease both;
+      }
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(14px);
+        }
+      }
+    }
   `;
 
-  render() {
-    return html`
-      <div class="mx-auto max-w-6xl">
-        <section
-          class="mb-8 grid grid-cols-1 gap-4 border-b border-neutral-300 pb-6 lg:grid-cols-3"
-        >
-          <div class="aiux-card bg-surface-primary lg:col-span-2">
-            <div class="aiux-card-body">
-              <p
-                class="font-mono text-xs uppercase tracking-wide text-primary-900"
-              >
-                ${i18n.getMessage('AIUX starter application')}
-              </p>
-              <h1 class="text-3xl font-bold text-text-primary">
-                ${i18n.getMessage('Build ServiceNow experiences faster.')}
-              </h1>
-              <p class="text-sm leading-relaxed text-text-secondary">
-                ${i18n.getMessage(
-                  "We've scaffolded a basic two-page application to accelerate your development."
-                )}
-              </p>
-              <div class="aiux-card-actions mt-2">
-                <a class="aiux-btn aiux-btn-primary" href="./incidents">
-                  ${i18n.getMessage('View incident list')}
-                </a>
-                <a class="aiux-btn aiux-btn-outline" href="./home">
-                  ${i18n.getMessage('Start from home')}
-                </a>
-              </div>
-            </div>
-          </div>
+  constructor() {
+    super();
+    this._stats = null;
+  }
 
-          <aside class="aiux-card bg-surface-primary">
-            <div class="aiux-card-body justify-between">
-              <div>
-                <p
-                  class="font-mono text-xs uppercase tracking-wide text-primary-900"
-                >
-                  ${i18n.getMessage('Sample widget')}
-                </p>
-                <h2 class="aiux-card-title text-text-primary">
-                  ${i18n.getMessage('Hello world widget')}
-                </h2>
-                <p class="text-sm leading-relaxed text-text-secondary">
-                  ${i18n.getMessage(
-                    'A minimal AIUX widget with a server script, included as a starting point for custom widgets.'
-                  )}
-                </p>
-              </div>
-              <code
-                class="aiux-badge aiux-badge-ghost mt-4 w-fit font-mono text-xs"
-              >
-                widgets/aiux-hello-world
-              </code>
-            </div>
-          </aside>
+  connectedCallback() {
+    super.connectedCallback();
+    loadCatalog()
+      .then(m => (this._stats = m.stats))
+      .catch(() => (this._stats = null));
+  }
+
+  firstUpdated() {
+    document.title = i18n.getMessage('Catalog Intelligence 360');
+  }
+
+  _go = () => navigate('/explore');
+
+  _kpi(value, label) {
+    return html`<div class="rise rounded-2xl border border-base-300 bg-base-100 p-4 shadow-sm">
+      <div class="text-3xl font-bold text-text-primary">${value}</div>
+      <div class="text-sm text-text-secondary">${label}</div>
+    </div>`;
+  }
+
+  _card(title, text) {
+    return html`<div class="rise rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm">
+      <h2 class="text-lg font-semibold text-text-primary">${title}</h2>
+      <p class="mt-1 text-sm text-text-secondary">${text}</p>
+    </div>`;
+  }
+
+  render() {
+    const s = this._stats;
+    const f = n => new Intl.NumberFormat().format(n);
+    return html`
+      <div class="mx-auto flex max-w-7xl flex-col gap-6">
+        <section class="rise flex flex-col gap-3">
+          <p class="font-mono text-xs uppercase tracking-wide text-primary-900">${i18n.getMessage('Catalog Intelligence 360')}</p>
+          <h1 class="max-w-3xl break-words text-4xl font-bold text-text-primary">${i18n.getMessage('Your service catalog, as a living universe.')}</h1>
+          <p class="max-w-2xl text-base leading-relaxed text-text-secondary">
+            ${i18n.getMessage('Every dot is a real catalog item from this instance. Zoom into a category, switch lenses and see where your catalog is rich, thin or quiet.')}
+          </p>
         </section>
 
-        <ul class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <li>
-            <aiux-feature-card
-              index="01"
-              title=${i18n.getMessage('Documentation')}
-              description=${i18n.getMessage(
-                'Explore the AIUX docs for components, APIs, and guides to build your ServiceNow experience.'
-              )}
-              href=""
-              linkLabel=${i18n.getMessage('Learn')}
-            ></aiux-feature-card>
-          </li>
-          <li>
-            <aiux-feature-card
-              index="02"
-              title=${i18n.getMessage('AI-ready out of the box')}
-              description=${i18n.getMessage(
-                'Start building with AIUX agent skills and linting rules already configured — your AI coding agent understands your project conventions from the start.'
-              )}
-              linkLabel=${i18n.getMessage('Build')}
-            ></aiux-feature-card>
-          </li>
-          <li>
-            <aiux-feature-card
-              index="03"
-              title=${i18n.getMessage('Deploy to ServiceNow')}
-              description=${i18n.getMessage(
-                "When you're ready, push your experience to a ServiceNow instance with a single command using the built-in deploy pipeline."
-              )}
-              linkLabel=${i18n.getMessage('Deploy')}
-            ></aiux-feature-card>
-          </li>
-        </ul>
+        <section class="hero-universe overflow-hidden rounded-3xl border border-base-300 shadow-sm" aria-label=${i18n.getMessage('Catalog universe preview')}>
+          <cat-universe compact @cat-universe:enter=${this._go}></cat-universe>
+        </section>
+
+        ${s
+          ? html`<section aria-label=${i18n.getMessage('Catalog at a glance')} class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              ${this._kpi(f(s.items), i18n.getMessage('catalog items'))}
+              ${this._kpi(f(s.populatedCategories), i18n.getMessage('categories in use'))}
+              ${this._kpi(f(s.complete), i18n.getMessage('items with complete metadata'))}
+              ${this._kpi(f(s.requestedItems), i18n.getMessage('items that have been requested'))}
+            </section>`
+          : nothing}
+
+        <section class="grid grid-cols-1 gap-3 md:grid-cols-3" aria-label=${i18n.getMessage('Intelligence lenses')}>
+          ${this._card(i18n.getMessage('Completeness'), i18n.getMessage('See which items are missing descriptions, icons or a category.'))}
+          ${this._card(i18n.getMessage('Lifecycle and demand'), i18n.getMessage('Spot inactive items and the few that have actually been requested.'))}
+          ${this._card(i18n.getMessage('CSDM foundation'), i18n.getMessage('Service offerings are ready to be aligned with the catalog in a later milestone.'))}
+        </section>
+
+        <div>
+          <button class="aiux-btn aiux-btn-primary" @click=${this._go}>${i18n.getMessage('Explore the universe')}</button>
+        </div>
       </div>
     `;
   }
