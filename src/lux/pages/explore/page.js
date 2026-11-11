@@ -9,6 +9,8 @@ export default class ExplorePage extends AIUXElement {
   static styles = css`
     :host {
       display: block;
+      width: 100%;
+      min-width: 0;
       /* leaves room for the platform's Otto input bar below the universe */
       height: calc(100dvh - 176px);
       min-height: 480px;

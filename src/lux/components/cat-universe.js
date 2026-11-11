@@ -49,7 +49,8 @@ export default class CatUniverse extends AIUXElement {
     _hover: {state: true},
     _query: {state: true},
     _searchOpen: {state: true},
-    _legendOpen: {state: true}
+    _legendOpen: {state: true},
+    _narrow: {state: true}
   };
 
   static styles = css`
@@ -729,6 +730,7 @@ export default class CatUniverse extends AIUXElement {
     this._query = '';
     this._searchOpen = false;
     this._legendOpen = false;
+    this._narrow = false;
     this._cam = {x: 0, y: 0, w: 1000};
     this._anim = 0;
     this._layout = null;
@@ -779,6 +781,7 @@ export default class CatUniverse extends AIUXElement {
       this._ro = new ResizeObserver(() => {
         if (!this._focus && Math.abs(stage.clientWidth - lastW) > 2) this._cam = this._fitAll();
         lastW = stage.clientWidth;
+        this._narrow = lastW < 220;
         this._applyCam();
       });
       this._ro.observe(stage);
@@ -1040,6 +1043,7 @@ export default class CatUniverse extends AIUXElement {
     return html`
       ${this.compact ? nothing : this._renderBar()}
       <div class="stage">
+        ${this._narrow ? html`<div class="state" role="status"><small>${i18n.getMessage('Not enough room here. Collapse the sidebar or widen the window.')}</small></div>` : nothing}
         ${guard([this._model, this._lens, this._gap, this._focus, this._selected, this.compact], () => this._renderSvg())}
         ${this.compact ? this._renderEnter() : html`${this._renderCrumbs()}${this._selected ? this._renderDetail() : nothing}${this._renderDock()}`}
         ${this._hover ? this._renderTip() : nothing}

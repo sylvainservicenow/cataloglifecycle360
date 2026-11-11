@@ -15,6 +15,8 @@ export default class HomePage extends AIUXElement {
   static styles = css`
     :host {
       display: block;
+      width: 100%;
+      min-width: 0;
     }
     .hero-universe {
       height: clamp(340px, 52vh, 560px);
