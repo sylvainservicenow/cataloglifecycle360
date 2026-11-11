@@ -21,3 +21,15 @@ Side effects of that one update (platform-generated): `sys_mod_count` 22→23, `
 ## Cross-scope privileges: potentially redundant
 
 Four `sys_scope_privilege` rows for `x_snc_catalogintel` were created for the earlier server-side write path and kept unchanged by decision: `sc_cat_item` Write, `sc_cat_item_producer` Write, `GlideRecord.setValue` Execute, `GlideRecord.update` Execute. The REST approach does not use them, so they are probably redundant. Review and remove them once the REST path is accepted.
+
+## Phase 3C: closing the loop
+
+- After a verified Apply, Investigate updates the item's findings and the affected-item count in place and shows "Counts updated … N → M". Nothing is applied to shared state unless the native read-back matched.
+- "See it in Explore" opens Explore on the Completeness lens with the item's category focused and the item selected. The improved dot blooms (reduced-motion safe) and its detail panel notes "Improved by an approved update: 50% → 75%". The note lives in the session's cached model only; it is not stored.
+- Application-context check: `_scopeMismatch` compares the record's application with the user's current application. Verified read-only by switching the session to Employee Slate and back to Global: it returns nothing when they match, and names both applications and the action when they differ.
+- Explore reads `cat`, `item` and `lens` from the URL and hands them to the universe as properties (attribute bindings did not update on this page).
+
+## Limitations
+
+- The improvement highlight is session-only; a full reload recomputes completeness from the database without the "improved" marker.
+- The four cross-scope privilege rows remain in place and are probably redundant (see above).

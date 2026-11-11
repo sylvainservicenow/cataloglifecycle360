@@ -51,6 +51,7 @@ export default class CatUniverse extends AIUXElement {
     legendItems: {attribute: false}, // [{color, label}] describing the markers
     focusId: {attribute: 'focus-id'}, // category (cluster) id to focus
     selectedId: {attribute: 'selected-id'}, // item sys_id to select
+    lens: {type: String}, // lens to open with (e.g. 'quality'), set by the host page
     _model: {state: true},
     _error: {state: true},
     _lens: {state: true},
@@ -202,6 +203,28 @@ export default class CatUniverse extends AIUXElement {
       }
       .ring {
         animation: pulse 1.8s ease-out infinite;
+      }
+      .bloom {
+        animation: bloom 2.2s ease-out 3 both;
+      }
+      @keyframes bloom {
+        from {
+          transform: scale(0.8);
+          opacity: 1;
+        }
+        to {
+          transform: scale(3);
+          opacity: 0;
+        }
+      }
+      .gain {
+        animation: gain-in 0.7s ease both;
+      }
+      @keyframes gain-in {
+        from {
+          opacity: 0;
+          transform: translateY(-4px);
+        }
       }
       @keyframes pulse {
         from {
@@ -859,6 +882,7 @@ export default class CatUniverse extends AIUXElement {
     this.legendItems = null;
     this.focusId = null;
     this.selectedId = null;
+    this.lens = '';
     this._model = null;
     this._error = '';
     this._lens = 'overview';
@@ -913,6 +937,7 @@ export default class CatUniverse extends AIUXElement {
     this._applyCam();
     if (changed.has('_focus') && changed.get('_focus') !== undefined) this._emit('cat-universe:focus', {id: this._focus});
     if (changed.has('_selected') && changed.get('_selected') !== undefined) this._emit('cat-universe:select', {id: this._selected});
+    if (changed.has('lens') && this.lens && LENSES.some(l => l.id === this.lens)) this._setLens(this.lens);
     if (changed.has('focusId') || changed.has('selectedId')) this._syncExternal();
   }
 
@@ -1400,6 +1425,7 @@ export default class CatUniverse extends AIUXElement {
           tabindex=${interactive && on ? 0 : -1} role=${interactive && on ? 'button' : 'presentation'}
           aria-label=${interactive && on ? n.name : nothing}></circle>`;
       })}
+      ${c.items.filter(it => it.n.improved && !this.investigate).map(it => svg`<circle class="bloom" style="cx:${on ? it.xx : it.x}px;cy:${on ? it.yy : it.y}px;r:${dotR + 2.5}px"></circle>`)}
       ${c.items.filter(it => matchIds.has(it.n.id)).map(it => svg`<circle class="match" style="cx:${on ? it.xx : it.x}px;cy:${on ? it.yy : it.y}px;r:${dotR + 3}px"></circle>`)}
       ${ring}
       ${c.labeled
@@ -1481,6 +1507,7 @@ export default class CatUniverse extends AIUXElement {
       </div>
       ${n.shortDescription ? html`<p>${n.shortDescription}</p>` : html`<p><em>${i18n.getMessage('No short description')}</em></p>`}
       <strong class="pct"><i class="sw" style="background:${FIELD_COLORS[n.fields]}"></i>${i18n.getMessage('Metadata completeness')} · ${n.fields * 25}%</strong>
+      ${n.improved ? html`<p class="gain" role="status">✓ ${i18n.getMessage('Improved by an approved update: {0}% → {1}%.', String(n.improved.from * 25), String(n.improved.to * 25))} ${n.improved.gained.map(k => CRITERIA.find(c => c.key === k)?.label()).filter(Boolean).join(', ')}</p>` : nothing}
       <ul class="checks">${CRITERIA.map(c => html`<li><span class="mark ${n.flags[c.key] ? 'y' : 'n'}" aria-hidden="true">${n.flags[c.key] ? '✓' : '✕'}</span>
         <span>${c.label()} <span class="vh">${n.flags[c.key] ? i18n.getMessage('present') : i18n.getMessage('missing')}</span></span></li>`)}</ul>
       <dl>

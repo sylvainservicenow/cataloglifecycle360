@@ -1,7 +1,6 @@
 import {html, css, nothing} from 'lit';
 import {customElement} from 'lit/decorators.js';
 import {AIUXWidgetElement, decorators} from '@servicenow/aiux/aiux-components-core';
-import {navigate} from '@servicenow/aiux/aiux-client';
 import {i18n} from '@servicenow/aiux/aiux-services';
 import {getJson, plain} from '../../lib/catalog-data.js';
 import {aiuxFetch} from '@servicenow/aiux/aiux-components-core';
@@ -694,7 +693,7 @@ export default class CatTransform extends AIUXWidgetElement {
       ${resolved.length ? html`<ul>${resolved.map(id => html`<li>✓ ${by.get(id) || label(id)} · ${i18n.getMessage('resolved')}</li>`)}</ul>` : html`<p class="muted">${i18n.getMessage('No gap was resolved by this change.')}</p>`}
       ${open.length ? html`<p class="muted">${i18n.getMessage('Still open: {0}', open.map(id => by.get(id) || id).join(', '))}</p>` : html`<p>${i18n.getMessage('No gaps remain for this item.')}</p>`}
       <div class="actions"><button class="primary" @click=${() => this.dispatchEvent(new CustomEvent('cat-transform:close', {bubbles: true, composed: true}))}>${i18n.getMessage('Back to Investigate')}</button>
-        <button class="ghost" @click=${() => navigate('/explore')}>${i18n.getMessage('Open Explore')}</button></div>`;
+        <button class="ghost" @click=${() => this.dispatchEvent(new CustomEvent('cat-transform:explore', {detail: {itemId: this.itemId}, bubbles: true, composed: true}))}>${i18n.getMessage('See it in Explore')}</button></div>`;
   }
 }
 

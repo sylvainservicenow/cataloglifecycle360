@@ -1,4 +1,4 @@
-import {html, css} from 'lit';
+import {html, css, isServer} from 'lit';
 import {customElement} from 'lit/decorators.js';
 import {AIUXElement} from '@servicenow/aiux/aiux-components-core';
 import {navigate} from '@servicenow/aiux/aiux-client';
@@ -18,7 +18,36 @@ export default class ExplorePage extends AIUXElement {
     }
   `;
 
+  static properties = {_ctx: {state: true}};
+
+  constructor() {
+    super();
+    this._ctx = {cat: '', item: '', lens: ''};
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    if (isServer) return;
+    // Context carried in from Investigate/Transform, so the person lands on what they just improved.
+    const q = new URLSearchParams(window.location.search);
+    this._ctx = {cat: q.get('cat') || '', item: q.get('item') || '', lens: q.get('lens') || ''};
+  }
+
+  /** Hand the carried-in context to the universe as properties; it applies them once its layout exists. */
+  _applyContext() {
+    const u = this.renderRoot?.querySelector('cat-universe');
+    if (!u) return;
+    u.focusId = this._ctx.cat || null;
+    u.selectedId = this._ctx.item || null;
+    u.lens = this._ctx.lens || '';
+  }
+
+  updated(changed) {
+    if (changed.has('_ctx')) this._applyContext();
+  }
+
   firstUpdated() {
+    this._applyContext();
     document.title = i18n.getMessage('Explore · Catalog Intelligence 360');
   }
 

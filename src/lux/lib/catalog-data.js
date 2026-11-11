@@ -450,6 +450,7 @@ export function applyPersisted(model, itemId, persisted) {
   if (!n) return null;
   const short = plain(persisted.short);
   const desc = plain(persisted.description);
+  const before = {fields: n.fields, flags: {...n.flags}};
   n.shortDescription = short;
   n.descLen = desc.length;
   n.descWords = desc ? desc.split(' ').length : 0;
@@ -459,6 +460,10 @@ export function applyPersisted(model, itemId, persisted) {
   n.flags.description = !!desc;
   n.fields = CRITERIA.filter(c => n.flags[c.key]).length;
   n.score = n.fields / CRITERIA.length;
+  // Remember a genuine improvement so Explore can show it (kept for this session only).
+  if (n.fields > before.fields) {
+    n.improved = {from: before.fields, to: n.fields, gained: CRITERIA.filter(c => n.flags[c.key] && !before.flags[c.key]).map(c => c.key), at: Date.now()};
+  }
   Object.assign(model.stats, scopeStats(model.nodes), {populatedCategories: model.stats.populatedCategories, categories: model.stats.categories, offerings: model.stats.offerings, minYear: model.stats.minYear, maxYear: model.stats.maxYear, lastRequest: model.stats.lastRequest});
   return n;
 }

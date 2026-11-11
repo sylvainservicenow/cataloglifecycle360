@@ -1,6 +1,7 @@
 import {html, css, nothing, isServer} from 'lit';
 import {customElement} from 'lit/decorators.js';
 import {AIUXElement, withWidgetContext} from '@servicenow/aiux/aiux-components-core';
+import {navigate} from '@servicenow/aiux/aiux-client';
 import {i18n} from '@servicenow/aiux/aiux-services';
 import {applyPersisted, classLabel, loadCatalog, loadItemVariables, loadTextFacts, loadVariableStats} from '../../lib/catalog-data.js';
 import {classBreakdown, distribution, nodeIndex, scopedIds} from '../../lib/discovery.js';
@@ -102,6 +103,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     _readinessError: {state: true},
     _active: {state: true},
     _cat: {state: true},
+    _impact: {state: true},
     _item: {state: true},
     _cls: {state: true},
     _drawer: {state: true},
@@ -241,6 +243,26 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       line-height: 1.2;
       color: #032d42;
       overflow-wrap: anywhere;
+    }
+    .impact {
+      margin: 0.25rem 0 0.5rem;
+      padding: 0.45rem 0.7rem;
+      border-radius: 0.75rem;
+      background: #e3f6ea;
+      color: #0d4d28;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .impact {
+        animation: impact-in 0.6s ease both;
+      }
+      @keyframes impact-in {
+        from {
+          opacity: 0;
+          transform: translateY(-4px);
+        }
+      }
     }
     .count {
       display: flex;
@@ -732,6 +754,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     this._readinessError = '';
     this._active = 'visual-enrichment';
     this._cat = null;
+    this._impact = null;
     this._item = null;
     this._cls = '';
     this._drawer = false;
@@ -965,14 +988,28 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   /* ---------- preparation ---------- */
   /** An approved change was saved and read back: bring every cached view in line with the database. */
   _onApplied = async e => {
-    const {itemId, persisted} = e.detail;
+    const {itemId, persisted, verified} = e.detail;
+    // Only a native read-back that matches what was approved may change what we show.
+    if (!verified) return;
+    const countBefore = this._readiness?.discovery?.affectedIds?.length ?? null;
     applyPersisted(this._model, itemId, persisted);
     const stats = await loadVariableStats().catch(() => null);
     this._readiness = buildAiReadiness(this._model, stats);
+    const countAfter = this._readiness.discovery.affectedIds.length;
+    this._impact = countBefore == null ? null : {before: countBefore, after: countAfter, name: this._model.nodes.find(x => x.id === itemId)?.name};
     this._visual = buildVisualEnrichment(this._model);
     this._vars = null;
     if (this._item === itemId) this._loadVars(itemId);
     this.requestUpdate();
+  };
+
+  /** Carry the item, its category and the completeness lens into Explore. */
+  _openExplore = e => {
+    const id = e.detail?.itemId || this._item;
+    const n = this._model?.nodes.find(x => x.id === id);
+    const q = new URLSearchParams({item: id, lens: 'quality'});
+    if (n?.cluster) q.set('cat', n.cluster);
+    navigate(`/explore?${q}`);
   };
 
   _closePrepare = () => {
@@ -1072,6 +1109,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       <div class="eyebrow">${d.id === 'ai-readiness' ? i18n.getMessage('Discovery · AI readiness') : d.id === 'csdm-alignment' ? i18n.getMessage('Discovery · CSDM') : i18n.getMessage('Discovery · Visual enrichment')}</div>
       <h1>${d.title}</h1>
       ${foundation ? nothing : html`<div class="count"><b>${fmt(scope.length)}</b><span>${this._cat || this._cls ? i18n.getMessage('in this scope, of {0} affected', fmt(d.affectedIds.length)) : i18n.getMessage('of {0} items', fmt(total))}</span></div>`}
+      ${this._impact && this._impact.before !== this._impact.after ? html`<p class="impact" role="status">✓ ${i18n.getMessage('Counts updated after “{0}” was saved and verified: {1} → {2} items with potential gaps.', this._impact.name || '', fmt(this._impact.before), fmt(this._impact.after))}</p>` : nothing}
       <p>${d.summary}</p>
       <p class="muted">${d.why}</p>
       ${d.id === 'ai-readiness' && this._readinessError ? html`<div class="note" role="status">${i18n.getMessage('Variable counts could not be read ({0}). The form check is shown as pending, not as passed.', this._readinessError)}</div>` : nothing}
@@ -1247,7 +1285,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       </div></div>`;
     }
     return html`<div class="scrim"><div class="sheet wide" role="dialog" aria-modal="true" aria-label=${i18n.getMessage('Transform workspace')}>
-      <cat-transform item-id=${this._item} .readiness=${this._readiness} @cat-transform:applied=${this._onApplied} @cat-transform:close=${this._closePrepare}></cat-transform>
+      <cat-transform item-id=${this._item} .readiness=${this._readiness} @cat-transform:applied=${this._onApplied} @cat-transform:close=${this._closePrepare} @cat-transform:explore=${this._openExplore}></cat-transform>
       <div class="actions"><button class="ghost" @click=${this._closePrepare}>${i18n.getMessage('Close workspace')}</button></div>
     </div></div>`;
   }
