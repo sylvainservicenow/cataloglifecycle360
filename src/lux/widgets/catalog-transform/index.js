@@ -464,7 +464,9 @@ export default class CatTransform extends AIUXWidgetElement {
     if (!changes.length || this._confirm !== true) return;
     this._phase = 'applying';
     const id = this.itemId;
-    const url = `/api/now/table/sc_cat_item/${id}`;
+    // Write through the record's own class table (e.g. sc_cat_item_producer) so that table's ACLs apply.
+    const table = /^[a-z][a-z0-9_]*$/.test(this._item?.cls || '') ? this._item.cls : 'sc_cat_item';
+    const url = `/api/now/table/${table}/${id}`;
     const fields = 'sys_id,short_description,description,sys_updated_on';
     const fail = (kind, message, detail) => {
       this._errKind = kind;
