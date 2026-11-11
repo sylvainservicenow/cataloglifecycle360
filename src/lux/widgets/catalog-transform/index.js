@@ -473,6 +473,21 @@ export default class CatTransform extends AIUXWidgetElement {
       this._stale = kind === 'stale';
       this._phase = 'error';
     };
+    let step = 'read';
+    /** Failed HTTP calls throw; recover the status and the platform's own message. */
+    const explain = e => {
+      const status = e?.response?.status ?? null;
+      const raw = e?.response?.data ?? e?.response?.body ?? '';
+      let msg = '';
+      try {
+        const o = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        msg = o?.error?.message || '';
+        if (o?.error?.detail) msg += ` (${o.error.detail})`;
+      } catch {
+        msg = String(raw).slice(0, 300);
+      }
+      return {status, msg, step};
+    };
     try {
       // 1. fresh read, stale check
       const fresh = (await getJson(`${url}?sysparm_fields=${fields}&sysparm_exclude_reference_link=true`)).rows;
@@ -481,6 +496,7 @@ export default class CatTransform extends AIUXWidgetElement {
       const moved = !cur || String(cur.sys_updated_on || '') !== String(b.updated || '') || changes.some(c => String(cur[c.field.apiName] || '') !== String(b[c.field.raw] || ''));
       if (moved) return fail('stale', i18n.getMessage('The item changed after these proposals were generated. Nothing was applied. Reload the current values and generate again.'));
       // 2. write only the approved fields
+      step = 'update';
       const body = Object.fromEntries(changes.map(c => [c.field.apiName, c.to]));
       const res = await aiuxFetch(url, {method: 'PATCH', headers: {Accept: 'application/json', 'Content-Type': 'application/json'}, body: JSON.stringify(body)});
       if (!res.ok) {
@@ -491,6 +507,7 @@ export default class CatTransform extends AIUXWidgetElement {
         return fail(kind, title, {recordClass: this._item.cls, status: res.status, lastError: msg, recordUnchanged: true});
       }
       // 3. read back from the database; success is only claimed if it matches
+      step = 'verify';
       const back = (await getJson(`${url}?sysparm_fields=${fields}&sysparm_exclude_reference_link=true`)).rows;
       const after = Array.isArray(back) ? back[0] : back;
       const verified = changes.every(c => String(after[c.field.apiName] || '') === c.to);
@@ -498,7 +515,14 @@ export default class CatTransform extends AIUXWidgetElement {
       this._phase = 'done';
       this.dispatchEvent(new CustomEvent('cat-transform:applied', {detail: {itemId: id, persisted: this._result.persisted, verified}, bubbles: true, composed: true}));
     } catch (e) {
-      fail('failed', i18n.getMessage('The update could not be completed. Nothing was reported as applied.'), {lastError: e?.message || ''});
+      const x = explain(e);
+      const denied = x.status === 401 || x.status === 403;
+      const msg = step === 'verify'
+        ? i18n.getMessage('The update may have been saved, but reading it back failed, so it is not reported as applied. Check the record.')
+        : denied
+          ? i18n.getMessage('The platform refused this {0} (HTTP {1}). Nothing was reported as applied.', step === 'read' ? i18n.getMessage('read') : i18n.getMessage('update'), String(x.status))
+          : i18n.getMessage('The update could not be completed. Nothing was reported as applied.');
+      fail(denied ? 'acl' : 'failed', msg, {recordClass: this._item?.cls, status: x.status, lastError: `${x.step}: ${x.msg || e?.message || ''}`, recordUnchanged: step !== 'verify' ? true : undefined});
     }
   }
 
