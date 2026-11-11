@@ -3,7 +3,7 @@ import {customElement} from 'lit/decorators.js';
 import {AIUXElement} from '@servicenow/aiux/aiux-components-core';
 import {navigate} from '@servicenow/aiux/aiux-client';
 import {i18n} from '@servicenow/aiux/aiux-services';
-import {loadCatalog, loadVariableStats} from '../../lib/catalog-data.js';
+import {loadCatalog, loadTextFacts, loadVariableStats} from '../../lib/catalog-data.js';
 import {buildAiReadiness} from '../../lib/investigations/ai-readiness.js';
 import '../../components/cat-universe.js';
 
@@ -49,8 +49,8 @@ export default class HomePage extends AIUXElement {
         this._stats = m.stats;
         this._opps = {visual: m.nodes.filter(n => !n.flags.icon).length, items: m.nodes.length, readiness: null};
         // AI readiness needs variable counts; they arrive after the catalog, so the first card never waits for them.
-        return loadVariableStats()
-          .then(v => buildAiReadiness(m, v).discovery.affectedIds.length)
+        return Promise.all([loadVariableStats(), loadTextFacts(m)])
+          .then(([v]) => buildAiReadiness(m, v).discovery.affectedIds.length)
           .catch(() => null)
           .then(n => (this._opps = {...this._opps, readiness: n, readinessActive: m.nodes.filter(x => x.active).length}));
       })

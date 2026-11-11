@@ -121,6 +121,10 @@ declare global {
                         id: '59be3863232c5f22bb3f799cdfc65a21'
                         deleted: true
                     }
+                    'aiux-widget|cat-semantic-assess': {
+                        table: 'sys_aix_widget'
+                        id: '4317ecac5de39dea97460f71d867d582'
+                    }
                     bom_json: {
                         table: 'sys_module'
                         id: 'a6ecdb490f144780868d34ace29c05f0'

@@ -137,8 +137,10 @@ export function loadCatalog(force = false) {
 
 async function build() {
   const t0 = performance.now();
-  const [items, cats, links, ritms, offerings, catalogRows] = await Promise.all([
-    fetchAll('sc_cat_item', 'sys_idISNOTEMPTY', 'sys_id,name,sys_class_name,active,category,short_description,description,icon,picture,owner,group,flow_designer_flow,workflow,delivery_plan,sys_created_on,sys_updated_on', 2),
+  const [items, withDescription, cats, links, ritms, offerings, catalogRows] = await Promise.all([
+    fetchAll('sc_cat_item', 'sys_idISNOTEMPTY', 'sys_id,name,sys_class_name,active,category,short_description,icon,picture,sys_created_on,sys_updated_on'),
+    // Descriptions are bulky; the first paint only needs to know which items have one.
+    fetchAll('sc_cat_item', 'descriptionISNOTEMPTY', 'sys_id'),
     fetchAll('sc_category', 'sys_idISNOTEMPTY', 'sys_id,title,parent,active,sc_catalog'),
     fetchAll('sc_cat_item_category', 'sys_idISNOTEMPTY', 'sc_cat_item,sc_category'),
     fetchAll('sc_req_item', 'sys_idISNOTEMPTY', 'cat_item,sys_created_on'),
@@ -165,14 +167,14 @@ async function build() {
     if (r.sys_created_on > lastRequest) lastRequest = r.sys_created_on;
   }
 
+  const hasDescription = new Set(withDescription.rows.map(r => r.sys_id));
   const nodes = items.rows.map(r => {
     const direct = val(r.category);
     const extra = linkByItem.get(r.sys_id) || [];
     const catIds = [...new Set([direct, ...extra].filter(c => c && catById.has(c)))];
-    const desc = plain(r.description);
     const flags = {
       shortDescription: !!plain(r.short_description),
-      description: !!plain(r.description),
+      description: hasDescription.has(r.sys_id),
       icon: !!(val(r.icon) || val(r.picture)),
       category: catIds.length > 0
     };
@@ -184,12 +186,12 @@ async function build() {
       cluster: catIds[0] || UNCATEGORISED,
       catIds,
       shortDescription: plain(r.short_description),
-      // text facts for the investigations; the full description is not kept
-      descLen: desc.length,
-      descWords: desc ? desc.split(' ').length : 0,
-      descSnippet: desc.slice(0, 320),
+      // filled by loadTextFacts() when an investigation needs them
+      descLen: 0,
+      descWords: 0,
+      descSnippet: '',
+      ctx: null,
       nameKey: String(r.name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(),
-      ctx: {owner: !!val(r.owner), group: !!val(r.group), fulfilment: !!(val(r.flow_designer_flow) || val(r.workflow) || val(r.delivery_plan))},
       created: r.sys_created_on || '',
       updated: r.sys_updated_on || '',
       requests: reqCount.get(r.sys_id) || 0,
@@ -236,8 +238,40 @@ async function build() {
       maxYear: years.length ? Math.max(...years) : null,
       offerings: offerings.error ? null : offerings.rows.length
     },
-    warnings: [cats, links, ritms, offerings].map(r => r.error).filter(Boolean)
+    warnings: [cats, links, ritms, offerings, withDescription].map(r => r.error).filter(Boolean)
   };
+}
+
+/**
+ * Text and ownership facts the investigations read: description text and the
+ * owner / group / fulfilment references. Loaded once, on demand, then cached.
+ * Also confirms the "has a description" flag from the actual text, so a
+ * description holding only markup is not counted as present.
+ */
+export function loadTextFacts(model) {
+  if (!model.textFacts) {
+    model.textFacts = fetchAll('sc_cat_item', 'sys_idISNOTEMPTY', 'sys_id,description,owner,group,flow_designer_flow,workflow,delivery_plan').then(r => {
+      if (r.error) {
+        model.textFacts = null;
+        throw new Error(r.error);
+      }
+      const byId = new Map(model.nodes.map(n => [n.id, n]));
+      for (const row of r.rows) {
+        const n = byId.get(row.sys_id);
+        if (!n) continue;
+        const desc = plain(row.description);
+        n.descLen = desc.length;
+        n.descWords = desc ? desc.split(' ').length : 0;
+        n.descSnippet = desc.slice(0, 320);
+        n.ctx = {owner: !!val(row.owner), group: !!val(row.group), fulfilment: !!(val(row.flow_designer_flow) || val(row.workflow) || val(row.delivery_plan))};
+        n.flags.description = !!desc;
+        n.fields = CRITERIA.filter(c => n.flags[c.key]).length;
+        n.score = n.fields / CRITERIA.length;
+      }
+      return true;
+    });
+  }
+  return model.textFacts;
 }
 
 /* ------------------------------------------------------------------ *

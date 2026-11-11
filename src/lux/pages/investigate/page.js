@@ -2,13 +2,14 @@ import {html, css, nothing, isServer} from 'lit';
 import {customElement} from 'lit/decorators.js';
 import {AIUXElement, withWidgetContext} from '@servicenow/aiux/aiux-components-core';
 import {i18n} from '@servicenow/aiux/aiux-services';
-import {classLabel, loadCatalog, loadItemVariables, loadVariableStats} from '../../lib/catalog-data.js';
+import {classLabel, loadCatalog, loadItemVariables, loadTextFacts, loadVariableStats} from '../../lib/catalog-data.js';
 import {classBreakdown, distribution, nodeIndex, scopedIds} from '../../lib/discovery.js';
 import {buildVisualEnrichment, visualBrief} from '../../lib/investigations/visual-enrichment.js';
 import {assessVariables, buildAiReadiness, DIMENSIONS, failedCount} from '../../lib/investigations/ai-readiness.js';
 import {buildCsdmFoundation} from '../../lib/investigations/csdm.js';
 import {checkCapability} from '../../lib/capabilities.js';
 import '../../components/cat-universe.js';
+import '../../widgets/semantic-assess/index.js';
 
 const ACCENT = '#F2812F';
 const SOFT = '#D5DEEA';
@@ -744,7 +745,9 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       this._visual = buildVisualEnrichment(model);
       this._csdm = buildCsdmFoundation(model);
       this._model = model;
-      this._ensureReadiness();
+      // Heavier data is fetched only when the user's path needs it.
+      if (this._active === 'ai-readiness') this._ensureReadiness();
+      if (this._item) this._wantText();
     } catch (e) {
       this._error = e?.message || 'error';
     }
@@ -755,15 +758,20 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     if (this._readiness || this._readinessLoading) return;
     this._readinessLoading = true;
     try {
-      const stats = await loadVariableStats();
+      const [stats] = await Promise.all([loadVariableStats(), loadTextFacts(this._model)]);
       this._readiness = buildAiReadiness(this._model, stats);
     } catch (e) {
       this._readinessError = e?.message || 'error';
-      // Fall back to the checks that need no variable data; the form check reports "pending".
-      this._readiness = buildAiReadiness(this._model, null);
+      // Without the variable counts the form check reports "pending"; without text facts nothing is assessed.
+      if (this._model.textFacts) this._readiness = buildAiReadiness(this._model, null);
     } finally {
       this._readinessLoading = false;
     }
+  }
+
+  /** Description text for the inspector; fetched on first need, then cached. */
+  _wantText() {
+    loadTextFacts(this._model).then(() => this.requestUpdate()).catch(() => {});
   }
 
   _current() {
@@ -820,6 +828,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     if (this._item) {
       const n = nodeIndex(this._model).get(this._item);
       if (n && n.cluster !== this._cat && this._cat) this._cat = n.cluster;
+      this._wantText();
       this._loadVars(this._item);
     }
     this._syncUrl();
@@ -1075,7 +1084,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
               })
             : html`<ul>${d.method.criteria.map(c => html`<li><b>${c.label}</b> <span class="rule">${c.rule}</span></li>`)}</ul>`}
           ${d.id === 'ai-readiness' ? html`<h3>${i18n.getMessage('Semantic assessment')}</h3>
-            <div class="note info">${i18n.getMessage('Judging whether wording is actually clear needs a language model. It is separate from the checks above, is labelled as AI, and has not been run: the in-app call is available once the app is deployed. Until then the checks above are the complete assessment.')}</div>` : nothing}`;
+            <div class="note info">${i18n.getMessage('Judging whether wording is actually clear needs a language model. It is separate from the checks above and always labelled as AI. Open an item and choose “Run semantic assessment”: one model call per item, nothing is saved.')}</div>` : nothing}`;
       case 'evidence':
         return html`<h3>${i18n.getMessage('Records read')}</h3>
           <ul>${d.evidence.sources.map(s => html`<li><b>${s.table}</b> · ${s.fields.join(', ')}<br><span class="rule">${s.note}</span></li>`)}</ul>
@@ -1113,7 +1122,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       <h3>${i18n.getMessage('Short description')}</h3>
       <p>${n.shortDescription || html`<em>${i18n.getMessage('None')}</em>`}</p>
       <h3>${i18n.getMessage('Description')}</h3>
-      <p>${n.descSnippet ? n.descSnippet + (n.descLen > n.descSnippet.length ? '…' : '') : html`<em>${i18n.getMessage('None')}</em>`}</p>
+      <p>${n.ctx === null ? html`<em role="status">${i18n.getMessage('Loading…')}</em>` : n.descSnippet ? n.descSnippet + (n.descLen > n.descSnippet.length ? '…' : '') : html`<em>${i18n.getMessage('None')}</em>`}</p>
       ${this._active === 'ai-readiness' ? this._renderReadinessItem(n) : this._active === 'visual-enrichment' ? this._renderVisualItem(n, d) : nothing}
       <h3>${i18n.getMessage('Record')}</h3>
       <dl class="kv">
@@ -1153,7 +1162,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       <p class="muted">${i18n.getMessage('Shown for context only. It does not count against the item.')}</p>
       <h3>${i18n.getMessage('CSDM')}</h3><p class="muted">${i18n.getMessage('Assessed separately; no service association is expected here.')}</p>
       <h3>${i18n.getMessage('Semantic assessment')}</h3>
-      <div class="note info">${i18n.getMessage('Pending. Wording clarity is judged by a language model, which this page can call once the app is deployed. The checks above are deterministic.')}</div>`;
+      <cat-semantic-assess item-id=${n.id}></cat-semantic-assess>`;
   }
 
   _renderPrepare() {
@@ -1212,13 +1221,13 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
           return html`<details open><summary>${n.name}</summary>
             ${a?.failed.length ? html`<ul>${a.failed.map(f => html`<li><b>${f.check.label()}</b>: ${f.detail}</li>`)}</ul>` : html`<p class="muted">${i18n.getMessage('No failed checks.')}</p>`}
             <div class="cmp"><div><b>${i18n.getMessage('Today')}</b><br>${n.shortDescription || html`<em>${i18n.getMessage('No short description')}</em>`}</div>
-              <div class="after"><b>${i18n.getMessage('Proposed wording')}</b><br><em>${i18n.getMessage('Not drafted yet: wording needs the semantic AI step.')}</em></div></div></details>`;
+              <div class="after"><b>${i18n.getMessage('Proposed wording')}</b><br><cat-semantic-assess item-id=${id}></cat-semantic-assess></div></div></details>`;
         })}
         ${ids.length > items.length ? html`<p class="muted">${i18n.getMessage('and {0} more item(s)', fmt(ids.length - items.length))}</p>` : nothing}
       </div>
       <div class="step">
         <h3>3 · ${i18n.getMessage('AI-drafted wording for review')}</h3>
-        <div class="note info">${i18n.getMessage('Pending. Drafting clearer short descriptions, descriptions, labels and help text uses the Generic Prompt capability. It was verified to work on {0} (Azure OpenAI, about 5 seconds for one call), but calling it from this page needs the app deployed. Drafts will be labelled as AI-generated and each needs your approval.', '2026-11-11')}</div>
+        <div class="note info">${i18n.getMessage('Each item above can be sent to the language model on request (Generic Prompt, one call per item). Its suggestions are labelled as AI-generated and are never applied: approving and applying changes is a later phase.')}</div>
       </div>`;
   }
 }
