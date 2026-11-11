@@ -5,6 +5,10 @@ import {navigate} from '@servicenow/aiux/aiux-client';
 import {i18n} from '@servicenow/aiux/aiux-services';
 import {loadCatalog, loadTextFacts, loadVariableStats} from '../../lib/catalog-data.js';
 import {buildAiReadiness} from '../../lib/investigations/ai-readiness.js';
+import {buildFormIntelligence, loadAllVariables} from '../../lib/investigations/form-intelligence.js';
+import {buildOverlap} from '../../lib/investigations/overlap.js';
+import {buildTaxonomy} from '../../lib/investigations/taxonomy.js';
+import {buildCsdm, loadServiceData} from '../../lib/investigations/csdm.js';
 import '../../components/cat-universe.js';
 
 @customElement('x-snc-catalogintel-home-page')
@@ -47,12 +51,29 @@ export default class HomePage extends AIUXElement {
     loadCatalog()
       .then(m => {
         this._stats = m.stats;
-        this._opps = {visual: m.nodes.filter(n => !n.flags.icon).length, items: m.nodes.length, readiness: null};
-        // AI readiness needs variable counts; they arrive after the catalog, so the first card never waits for them.
-        return Promise.all([loadVariableStats(), loadTextFacts(m)])
-          .then(([v]) => buildAiReadiness(m, v).discovery.affectedIds.length)
-          .catch(() => null)
-          .then(n => (this._opps = {...this._opps, readiness: n, readinessActive: m.nodes.filter(x => x.active).length}));
+        this._opps = {};
+        // Each opportunity is computed from real records and appears as soon as it is ready, so the first card never waits for the others.
+        const put = (key, fn) => Promise.resolve().then(fn).then(v => (this._opps = {...this._opps, [key]: v})).catch(() => (this._opps = {...this._opps, [key]: {error: true}}));
+        put('taxonomy', () => {
+          const d = buildTaxonomy(m).discovery;
+          return {n: d.affectedIds.length, of: d.stats.active, uncategorised: d.stats.uncategorised};
+        });
+        put('overlap', () => loadTextFacts(m).catch(() => {}).then(() => {
+          const d = buildOverlap(m).discovery;
+          return {n: d.stats.groups, items: d.affectedIds.length, of: d.stats.active};
+        }));
+        put('meta', () => Promise.all([loadVariableStats(), loadTextFacts(m)]).then(([v]) => {
+          const d = buildAiReadiness(m, v).discovery;
+          return {n: d.affectedIds.length, of: d.stats.active};
+        }));
+        put('form', () => Promise.all([loadVariableStats(), loadAllVariables()]).then(([v, vars]) => {
+          const d = buildFormIntelligence(m, v, vars).discovery;
+          return {n: d.affectedIds.length, of: d.stats.withForm};
+        }));
+        put('csdm', () => loadServiceData().then(data => {
+          const d = buildCsdm(m, data).discovery;
+          return {verified: d.stats.verified, candidates: d.stats.candidates, offerings: d.stats.offerings};
+        }));
       })
       .catch(() => (this._stats = null));
   }
@@ -81,21 +102,27 @@ export default class HomePage extends AIUXElement {
   _renderOpportunities() {
     const o = this._opps;
     const f = n => new Intl.NumberFormat().format(n);
-    const card = (cls, eyebrow, count, text, action, d) => html`<div class="rise opp ${cls} rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm">
-      <p class="font-mono text-xs uppercase tracking-wide text-text-secondary">${eyebrow}</p>
-      <div class="mt-1 text-4xl font-bold text-text-primary">${count}</div>
-      <p class="mt-1 text-sm text-text-secondary">${text}</p>
-      <button class="aiux-btn aiux-btn-primary mt-3" @click=${() => this._inv(d)}>${action}</button>
-    </div>`;
+    const wait = (eyebrow, d) => html`<div class="rise rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm" role="status" data-investigation=${d}><p class="font-mono text-xs uppercase tracking-wide text-text-secondary">${eyebrow}</p><p class="mt-2 text-sm text-text-secondary">${i18n.getMessage('Reading records…')}</p></div>`;
+    const unavailable = (eyebrow, d) => html`<div class="rise rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm" data-investigation=${d}><p class="font-mono text-xs uppercase tracking-wide text-text-secondary">${eyebrow}</p><p class="mt-2 text-sm text-text-secondary">${i18n.getMessage('This could not be read right now, so no figure is shown.')}</p></div>`;
+    const card = (key, eyebrow, count, text, action, d) => {
+      const v = o[key];
+      if (!v) return wait(eyebrow, d);
+      if (v.error) return unavailable(eyebrow, d);
+      return html`<div class="rise rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm" data-investigation=${d}>
+        <p class="font-mono text-xs uppercase tracking-wide text-text-secondary">${eyebrow}</p>
+        <div class="mt-1 text-4xl font-bold text-text-primary">${count(v)}</div>
+        <p class="mt-1 text-sm text-text-secondary">${text(v)}</p>
+        <button class="aiux-btn aiux-btn-primary mt-3" @click=${() => this._inv(d)}>${action}</button>
+      </div>`;
+    };
     return html`<section aria-labelledby="opps" class="flex flex-col gap-3">
       <h2 id="opps" class="text-lg font-semibold text-text-primary">${i18n.getMessage('Where to look first')}</h2>
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-        ${card('visual', i18n.getMessage('Visual enrichment'), f(o.visual), i18n.getMessage('of {0} catalog items have no icon or picture.', f(o.items)), i18n.getMessage('Investigate visuals'), 'visual-enrichment')}
-        ${o.readiness == null && o.readinessActive == null
-          ? html`<div class="rise rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm" role="status"><p class="font-mono text-xs uppercase tracking-wide text-text-secondary">${i18n.getMessage('AI readiness')}</p><p class="mt-2 text-sm text-text-secondary">${i18n.getMessage('Assessing items for conversational AI…')}</p></div>`
-          : o.readiness == null
-            ? html`<div class="rise rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm"><p class="font-mono text-xs uppercase tracking-wide text-text-secondary">${i18n.getMessage('AI readiness')}</p><p class="mt-2 text-sm text-text-secondary">${i18n.getMessage('Variable data could not be read, so this assessment is unavailable right now.')}</p></div>`
-            : card('ready', i18n.getMessage('AI readiness'), f(o.readiness), i18n.getMessage('of {0} active items have a potential gap found by deterministic checks. A prompt to review, not a verdict.', f(o.readinessActive)), i18n.getMessage('Investigate AI readiness'), 'ai-readiness')}
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+        ${card('meta', i18n.getMessage('Metadata quality'), v => f(v.n), v => i18n.getMessage('of {0} active items have a potential gap in names, descriptions or forms. A prompt to review, not a verdict.', f(v.of)), i18n.getMessage('Investigate metadata'), 'ai-readiness')}
+        ${card('form', i18n.getMessage('Form quality'), v => f(v.n), v => i18n.getMessage('of {0} items with a form have a question worth reviewing: missing or technical labels, or no guidance on hard questions.', f(v.of)), i18n.getMessage('Investigate forms'), 'form-intelligence')}
+        ${card('overlap', i18n.getMessage('Potential duplication'), v => f(v.n), v => i18n.getMessage('groups of look-alike items ({0} items) to compare. Similar names are candidates, not proof.', f(v.items)), i18n.getMessage('Compare candidates'), 'overlap')}
+        ${card('taxonomy', i18n.getMessage('Taxonomy and discoverability'), v => f(v.n), v => i18n.getMessage('of {0} active items may be hard to find, including {1} in no category at all.', f(v.of), f(v.uncategorised)), i18n.getMessage('Investigate categories'), 'taxonomy')}
+        ${card('csdm', i18n.getMessage('Service alignment'), v => f(v.candidates), v => i18n.getMessage('items have a likely service offering to review. {0} are already verified as linked, out of {1} offerings.', f(v.verified), f(v.offerings)), i18n.getMessage('Check alignment'), 'csdm-alignment')}
       </div>
     </section>`;
   }

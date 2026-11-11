@@ -3,34 +3,54 @@ import {customElement} from 'lit/decorators.js';
 import {AIUXElement, withWidgetContext} from '@servicenow/aiux/aiux-components-core';
 import {navigate} from '@servicenow/aiux/aiux-client';
 import {i18n} from '@servicenow/aiux/aiux-services';
-import {applyPersisted, classLabel, loadCatalog, loadItemVariables, loadTextFacts, loadVariableStats} from '../../lib/catalog-data.js';
+import {keyed} from 'lit/directives/keyed.js';
+import {applyPersisted, classLabel, clearItemVariables, loadCatalog, loadItemVariables, loadTextFacts, loadVariableStats} from '../../lib/catalog-data.js';
 import {classBreakdown, distribution, nodeIndex, scopedIds} from '../../lib/discovery.js';
-import {buildVisualEnrichment, visualBrief} from '../../lib/investigations/visual-enrichment.js';
 import {assessVariables, buildAiReadiness, DIMENSIONS, failedCount} from '../../lib/investigations/ai-readiness.js';
-import {buildCsdmFoundation} from '../../lib/investigations/csdm.js';
-import {checkCapability} from '../../lib/capabilities.js';
+import {buildFormIntelligence, loadAllVariables, loadChoices, patchVariables} from '../../lib/investigations/form-intelligence.js';
+import {buildOverlap, KIND as OVERLAP_KIND} from '../../lib/investigations/overlap.js';
+import {buildTaxonomy, categoryCandidates, ISSUE as TAXONOMY_ISSUE} from '../../lib/investigations/taxonomy.js';
+import {buildCsdm, loadServiceData, offeringCandidates, resetServiceData} from '../../lib/investigations/csdm.js';
 import '../../components/cat-universe.js';
 import '../../widgets/semantic-assess/index.js';
 import '../../widgets/catalog-transform/index.js';
+import '../../widgets/cat-workbench/index.js';
 
 const ACCENT = '#F2812F';
 const SOFT = '#D5DEEA';
 const NEUTRAL = '#B8C7DC';
 const fmt = n => new Intl.NumberFormat().format(n);
 const TABS = ['criteria', 'evidence', 'records', 'steps'];
+const INVESTIGATIONS = ['ai-readiness', 'form-intelligence', 'overlap', 'taxonomy', 'csdm-alignment'];
+const LABEL = {
+  'ai-readiness': () => i18n.getMessage('Metadata'),
+  'form-intelligence': () => i18n.getMessage('Forms'),
+  overlap: () => i18n.getMessage('Overlap'),
+  taxonomy: () => i18n.getMessage('Categories'),
+  'csdm-alignment': () => i18n.getMessage('Services')
+};
+const EYEBROW = {
+  'ai-readiness': () => i18n.getMessage('Investigation · Metadata and AI readiness'),
+  'form-intelligence': () => i18n.getMessage('Investigation · Form intelligence'),
+  overlap: () => i18n.getMessage('Investigation · Duplicates and overlap'),
+  taxonomy: () => i18n.getMessage('Investigation · Taxonomy and discoverability'),
+  'csdm-alignment': () => i18n.getMessage('Investigation · Service alignment')
+};
+const KIND_COLOR = {exact: '#E5484D', near: '#F2812F', related: '#F2B134'};
+const WB_MODE = {'form-intelligence': 'form', overlap: 'overlap', taxonomy: 'category', 'csdm-alignment': 'service'};
 
 @customElement('x-snc-catalogintel-investigate-page')
 export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   static aiContext = {
-    description: 'An investigation workspace showing catalog items affected by one discovery (visual enrichment, AI readiness or CSDM alignment) in the catalog universe',
-    bestFor: 'When the user wants to investigate catalog quality, open a discovery, focus a category or item, or prepare an improvement'
+    description: 'An investigation workspace showing catalog items affected by one investigation (metadata and AI readiness, form intelligence, duplicate and overlap, taxonomy, service alignment) in the catalog universe',
+    bestFor: 'When the user wants to investigate catalog quality, find confusing forms, potential duplicates, poorly categorised items or service alignment, or prepare an improvement'
   };
 
-  /* Conversational tools. They only move the view; nothing here reads or writes records beyond what the page already shows. */
+  /* Conversational tools. They move the view and open review workspaces. Generating a proposal needs a click and nothing is saved without the person's confirmation. */
   static client_tools = {
     open_investigation: {
-      description: 'Open a discovery: visual-enrichment, ai-readiness or csdm-alignment',
-      arguments: [{name: 'id', description: 'visual-enrichment, ai-readiness or csdm-alignment', type: 'string', required: true}],
+      description: 'Open an investigation: ai-readiness (metadata), form-intelligence, overlap (duplicates), taxonomy (categories) or csdm-alignment (service offerings)',
+      arguments: [{name: 'id', description: 'ai-readiness, form-intelligence, overlap, taxonomy or csdm-alignment', type: 'string', required: true}],
       definition: async function ({id}) {
         return this._tool(() => this._openDiscovery(id));
       }
@@ -52,21 +72,36 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       arguments: [{name: 'name', description: 'Item name, partial matches allowed', type: 'string', required: true}],
       definition: async function ({name}) {
         return this._tool(() => {
-          const n = this._model.nodes.find(x => x.name.toLowerCase() === String(name).toLowerCase()) || this._model.nodes.find(x => x.name.toLowerCase().includes(String(name).toLowerCase()));
-          if (!n) throw new Error(`No item matches "${name}"`);
-          this._setItem(n.id);
+          this._setItem(this._byName(name).id);
         });
       }
     },
     explain_discovery: {
-      description: 'Open the explanation of the current discovery and return its summary, method and evidence',
+      description: 'Open the explanation of the current investigation and return its summary, method and evidence',
       arguments: [],
       definition: async function () {
         return this._tool(() => {
           this._drawer = true;
           this._tab = 'criteria';
           const d = this._current();
+          if (!d) throw new Error('The investigation is still loading');
           return {title: d.title, summary: d.summary, classification: d.method.classification, severity: d.severity, scopeCount: this._scopeIds().length, version: d.version};
+        });
+      }
+    },
+    show_overlap_group: {
+      description: 'Open the duplicate and overlap investigation and select an item (by name) to show its candidate group, or the first group in the focused category',
+      arguments: [{name: 'name', description: 'Item name, partial matches allowed; omit to use the first group in scope', type: 'string', required: false}],
+      definition: async function ({name} = {}) {
+        this._openDiscovery('overlap');
+        await this._ensure('overlap');
+        return this._tool(() => {
+          const ids = this._scopeIds();
+          const id = name ? this._byName(name).id : ids[0];
+          if (!id) throw new Error('No candidate group in this scope');
+          this._setItem(id);
+          const g = this._disc.overlap?.groupOf.get(id);
+          return g ? {group: g.ids.map(x => nodeIndex(this._model).get(x)?.name), kind: g.kind} : {note: 'The item is not in a candidate group'};
         });
       }
     },
@@ -76,10 +111,8 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       definition: async function ({name} = {}) {
         return this._tool(() => {
           if (name) {
-            const n = this._model.nodes.find(x => x.name.toLowerCase() === String(name).toLowerCase()) || this._model.nodes.find(x => x.name.toLowerCase().includes(String(name).toLowerCase()));
-            if (!n) throw new Error(`No item matches "${name}"`);
             this._openDiscovery('ai-readiness');
-            this._setItem(n.id);
+            this._setItem(this._byName(name).id);
           }
           if (!this._item) throw new Error('Select an item first');
           this._active = 'ai-readiness';
@@ -88,10 +121,39 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       }
     },
     prepare_action: {
-      description: 'Open the preparation workspace for the current discovery. It prepares proposals for review and changes no records.',
-      arguments: [],
-      definition: async function () {
-        return this._tool(() => this._openPrepare());
+      description: 'Open the review workspace for the current investigation and selected item: improve a form, compare overlapping items, recommend a category or check service alignment. It only prepares proposals; saving needs the person to confirm.',
+      arguments: [{name: 'name', description: 'Item name; omit to use the selected item', type: 'string', required: false}],
+      definition: async function ({name} = {}) {
+        return this._tool(() => {
+          if (name) this._setItem(this._byName(name).id);
+          this._openPrepare();
+        });
+      }
+    },
+    recommend_category: {
+      description: 'Open the category recommendation workspace for an item (by name). The AI only chooses among existing categories and nothing is saved until the person confirms.',
+      arguments: [{name: 'name', description: 'Item name; omit to use the selected item', type: 'string', required: false}],
+      definition: async function ({name} = {}) {
+        this._openDiscovery('taxonomy');
+        await this._ensure('taxonomy');
+        return this._tool(() => {
+          if (name) this._setItem(this._byName(name).id);
+          if (!this._item) throw new Error('Select an item first');
+          this._openPrepare();
+        });
+      }
+    },
+    check_service_alignment: {
+      description: 'Open the service alignment workspace for an item (by name) to compare it with candidate service offerings. Nothing is saved until the person confirms.',
+      arguments: [{name: 'name', description: 'Item name; omit to use the selected item', type: 'string', required: false}],
+      definition: async function ({name} = {}) {
+        this._openDiscovery('csdm-alignment');
+        await this._ensure('csdm-alignment');
+        return this._tool(() => {
+          if (name) this._setItem(this._byName(name).id);
+          if (!this._item) throw new Error('Select an item first');
+          this._openPrepare();
+        });
       }
     }
   };
@@ -104,6 +166,12 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     _active: {state: true},
     _cat: {state: true},
     _impact: {state: true},
+    _disc: {state: true},
+    _discError: {state: true},
+    _wb: {state: true},
+    _transformFor: {state: true},
+    _choices: {state: true},
+    _uniKey: {state: true},
     _item: {state: true},
     _cls: {state: true},
     _drawer: {state: true},
@@ -634,6 +702,15 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .focus-body .rec button.name {
+      white-space: normal;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
     .rec small {
       color: #656462;
     }
@@ -752,20 +829,23 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     this._error = '';
     this._readiness = null;
     this._readinessError = '';
-    this._active = 'visual-enrichment';
+    this._active = 'ai-readiness';
     this._cat = null;
     this._impact = null;
+    this._disc = {};
+    this._discError = '';
+    this._wb = null;
+    this._transformFor = null;
+    this._choices = null;
+    this._uniKey = 0;
     this._item = null;
     this._cls = '';
     this._drawer = false;
     this._tab = 'criteria';
     this._prepare = false;
     this._picked = new Set();
-    this._caps = null;
     this._vars = null;
     this._allCats = false;
-    this._visual = null;
-    this._csdm = null;
     this._opener = null;
     this._onPop = () => this._readUrl();
   }
@@ -788,7 +868,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   }
 
   updated(changed) {
-    if (this._model && ['_active', '_cat', '_item', '_cls', '_readiness'].some(k => changed.has(k))) this._pushContext();
+    if (this._model && ['_active', '_cat', '_item', '_cls', '_readiness', '_disc'].some(k => changed.has(k))) this._pushContext();
     if (changed.has('_prepare') && this._prepare) this.renderRoot.querySelector('.sheet h2')?.focus();
     if (changed.has('_prepare') && !this._prepare && changed.get('_prepare')) this._opener?.focus?.();
   }
@@ -796,15 +876,40 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   /* ---------- data ---------- */
   async _load() {
     try {
-      const model = await loadCatalog();
-      this._visual = buildVisualEnrichment(model);
-      this._csdm = buildCsdmFoundation(model);
-      this._model = model;
-      // Heavier data is fetched only when the user's path needs it.
-      if (this._active === 'ai-readiness') this._ensureReadiness();
+      this._model = await loadCatalog();
+      this._ensure(this._active);
       if (this._item) this._wantText();
     } catch (e) {
       this._error = e?.message || 'error';
+    }
+  }
+
+  /** Each investigation is built once, on demand, from native records, then cached. */
+  async _ensure(id) {
+    if (!this._model) return;
+    if (id === 'ai-readiness') return this._ensureReadiness();
+    const key = {'form-intelligence': 'form', overlap: 'overlap', taxonomy: 'taxonomy', 'csdm-alignment': 'csdm'}[id];
+    if (!key || this._disc[key] || this._loading?.[key]) return;
+    (this._loading ||= {})[key] = true;
+    this._discError = '';
+    try {
+      let built;
+      if (key === 'form') {
+        const [stats, vars] = await Promise.all([loadVariableStats(), loadAllVariables()]);
+        built = buildFormIntelligence(this._model, stats, vars);
+      } else if (key === 'overlap') {
+        await loadTextFacts(this._model).catch(() => {});
+        built = buildOverlap(this._model);
+      } else if (key === 'taxonomy') built = buildTaxonomy(this._model);
+      else {
+        const data = await loadServiceData();
+        built = {...buildCsdm(this._model, data), data};
+      }
+      this._disc = {...this._disc, [key]: built};
+    } catch (e) {
+      this._discError = e?.message || 'error';
+    } finally {
+      this._loading[key] = false;
     }
   }
 
@@ -830,9 +935,8 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   }
 
   _current() {
-    if (this._active === 'ai-readiness') return this._readiness?.discovery || null;
-    if (this._active === 'csdm-alignment') return this._csdm;
-    return this._visual;
+    const d = this._disc;
+    return {'ai-readiness': this._readiness, 'form-intelligence': d.form, overlap: d.overlap, taxonomy: d.taxonomy, 'csdm-alignment': d.csdm}[this._active]?.discovery || null;
   }
 
   _scopeIds(withCategory = true) {
@@ -841,11 +945,18 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     return scopedIds(d, this._model, {categoryId: withCategory ? this._cat : null, cls: this._cls || null});
   }
 
+  _byName(name) {
+    const q = String(name).toLowerCase();
+    const n = this._model.nodes.find(x => x.name.toLowerCase() === q) || this._model.nodes.find(x => x.name.toLowerCase().includes(q));
+    if (!n) throw new Error(`No item matches "${name}"`);
+    return n;
+  }
+
   /* ---------- URL state ---------- */
   _readUrl(initial = false) {
     const q = new URLSearchParams(window.location.search);
     const d = q.get('d');
-    if (['visual-enrichment', 'ai-readiness', 'csdm-alignment'].includes(d)) this._active = d;
+    if (INVESTIGATIONS.includes(d)) this._active = d;
     this._cat = q.get('cat') || null;
     this._item = q.get('item') || null;
     this._cls = q.get('type') || '';
@@ -862,13 +973,15 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   }
 
   _openDiscovery(id) {
-    if (!['visual-enrichment', 'ai-readiness', 'csdm-alignment'].includes(id)) throw new Error(`Unknown investigation "${id}"`);
+    if (!INVESTIGATIONS.includes(id)) throw new Error(`Unknown investigation "${id}". Choose one of: ${INVESTIGATIONS.join(', ')}`);
     this._active = id;
-    this._item = null;
+    // the selected item and category are kept so related investigations feel like one journey
     this._vars = null;
+    this._choices = null;
     this._picked = new Set();
     this._syncUrl();
-    if (id === 'ai-readiness') this._ensureReadiness();
+    this._ensure(id);
+    if (this._item) this._loadVars(this._item);
   }
 
   _setCat(id) {
@@ -880,6 +993,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   _setItem(id) {
     this._item = id || null;
     this._vars = null;
+    this._choices = null;
     if (this._item) {
       const n = nodeIndex(this._model).get(this._item);
       if (n && n.cluster !== this._cat && this._cat) this._cat = n.cluster;
@@ -895,6 +1009,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   }
 
   async _loadVars(id) {
+    if (!['ai-readiness'].includes(this._active)) return;
     this._vars = {id, loading: true};
     try {
       const vars = await loadItemVariables(id);
@@ -923,13 +1038,14 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   _pushContext() {
     const d = this._current();
     const item = this._item ? nodeIndex(this._model).get(this._item) : null;
+    const group = item && this._active === 'overlap' ? this._disc.overlap?.groupOf.get(item.id) : null;
     this.setAiContext?.({
       page: 'Investigate',
-      discovery: d ? {id: d.id, title: d.title, classification: d.method.classification, severity: d.severity.level, affectedInScope: this._scopeIds().length} : null,
+      investigation: d ? {id: d.id, title: d.title, classification: d.method.classification, severity: d.severity.level, affectedInScope: this._scopeIds().length} : null,
       focusedCategory: this._cat ? this._model.clusters.find(c => c.id === this._cat)?.title : null,
       itemTypeFilter: this._cls || null,
-      selectedItem: item ? {id: item.id, name: item.name} : null,
-      availableInvestigations: ['visual-enrichment', 'ai-readiness', 'csdm-alignment']
+      selectedItem: item ? {id: item.id, name: item.name, overlapGroup: group ? group.ids.map(id => nodeIndex(this._model).get(id)?.name) : undefined} : null,
+      availableInvestigations: INVESTIGATIONS
     });
   }
 
@@ -937,42 +1053,66 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   _markers() {
     const ids = new Set(this._scopeIds(false));
     const m = {};
-    if (this._active === 'visual-enrichment') {
-      ids.forEach(id => (m[id] = ACCENT));
-      return {
-        markers: m,
-        legend: [
-          {color: ACCENT, label: i18n.getMessage('No icon or picture · {0}', fmt(ids.size))},
-          {color: SOFT, label: i18n.getMessage('Has a visual, or outside the filter')}
-        ]
-      };
-    }
-    if (this._active === 'ai-readiness' && this._readiness) {
-      const colors = ['#0E9F8E', '#F2B134', '#F2812F', '#E5484D'];
+    const active = this._model.nodes.filter(n => n.active && (!this._cls || n.cls === this._cls));
+    const inactive = i18n.getMessage('Inactive, not assessed · {0}', fmt(this._model.nodes.filter(n => !n.active).length));
+    const ramp = ['#0E9F8E', '#F2B134', '#F2812F', '#E5484D'];
+    const tallyRamp = (count, labels) => {
       const tally = [0, 0, 0, 0];
-      for (const n of this._model.nodes) {
-        if (!n.active) continue;
-        if (this._cls && n.cls !== this._cls) continue;
-        const k = Math.min(3, failedCount(this._readiness, n.id));
-        m[n.id] = colors[k];
+      for (const n of active) {
+        const k = Math.min(3, count(n));
+        if (k < 0) {
+          m[n.id] = NEUTRAL;
+          continue;
+        }
+        m[n.id] = ramp[k];
         tally[k]++;
       }
-      return {
-        markers: m,
-        legend: [
-          {color: colors[0], label: i18n.getMessage('No gap found · {0}', fmt(tally[0]))},
-          {color: colors[1], label: i18n.getMessage('1 gap · {0}', fmt(tally[1]))},
-          {color: colors[2], label: i18n.getMessage('2 gaps · {0}', fmt(tally[2]))},
-          {color: colors[3], label: i18n.getMessage('3 or more gaps · {0}', fmt(tally[3]))},
-          {color: SOFT, label: i18n.getMessage('Inactive, not assessed · {0}', fmt(this._model.nodes.filter(n => !n.active).length))}
-        ]
-      };
+      return [...labels.map((l, k) => ({color: ramp[k], label: `${l} · ${fmt(tally[k])}`})), {color: SOFT, label: inactive}];
+    };
+    if (this._active === 'ai-readiness' && this._readiness) {
+      return {markers: m, legend: tallyRamp(n => failedCount(this._readiness, n.id), [i18n.getMessage('No gap found'), i18n.getMessage('1 gap'), i18n.getMessage('2 gaps'), i18n.getMessage('3 or more gaps')])};
     }
-    if (this._active === 'csdm-alignment') {
-      this._model.nodes.forEach(n => (m[n.id] = NEUTRAL));
-      return {markers: m, legend: [{color: NEUTRAL, label: i18n.getMessage('Catalog item. No native link to offerings, so nothing is marked as missing.')}]};
+    if (this._active === 'form-intelligence' && this._disc.form) {
+      const by = this._disc.form.byItem;
+      const legend = tallyRamp(n => (by.has(n.id) ? by.get(n.id).findings.length : -1), [i18n.getMessage('No question to review'), i18n.getMessage('1 question to review'), i18n.getMessage('2 questions'), i18n.getMessage('3 or more questions')]);
+      return {markers: m, legend: [...legend.slice(0, 4), {color: NEUTRAL, label: i18n.getMessage('No form · {0}', fmt(active.filter(n => !by.has(n.id)).length))}, legend[4]]};
     }
-    return {markers: null, legend: []};
+    if (this._active === 'overlap' && this._disc.overlap) {
+      const g = this._disc.overlap.groupOf;
+      const sel = this._item && g.get(this._item);
+      const tally = {exact: 0, near: 0, related: 0};
+      for (const n of this._model.nodes) {
+        const grp = g.get(n.id);
+        if (!grp || !n.active) continue;
+        tally[grp.kind]++;
+        m[n.id] = sel && sel.id !== grp.id ? SOFT : KIND_COLOR[grp.kind];
+      }
+      return {markers: m, legend: [...Object.keys(OVERLAP_KIND).map(k => ({color: KIND_COLOR[k], label: `${OVERLAP_KIND[k].label()} · ${fmt(tally[k])}`})), {color: SOFT, label: i18n.getMessage('Not in a candidate group')}]};
+    }
+    if (this._active === 'taxonomy' && this._disc.taxonomy) {
+      const f = this._disc.taxonomy.findings;
+      const color = {uncategorised: '#E5484D', misplaced: '#F2812F', generic: '#F2B134'};
+      const tally = {uncategorised: 0, misplaced: 0, generic: 0};
+      for (const n of active) {
+        const first = ['uncategorised', 'misplaced', 'generic'].find(k => f.get(n.id)?.some(x => x.kind === k));
+        if (first) {
+          m[n.id] = color[first];
+          tally[first]++;
+        }
+      }
+      return {markers: m, legend: [...['uncategorised', 'misplaced', 'generic'].map(k => ({color: color[k], label: `${TAXONOMY_ISSUE[k]()} · ${fmt(tally[k])}`})), {color: SOFT, label: i18n.getMessage('No signal found')}]};
+    }
+    if (this._active === 'csdm-alignment' && this._disc.csdm) {
+      const v = new Set(this._disc.csdm.verifiedIds);
+      const c = this._disc.csdm.candidates;
+      for (const n of this._model.nodes) {
+        if (v.has(n.id)) m[n.id] = '#0E9F8E';
+        else if (c.has(n.id)) m[n.id] = '#7C3AED';
+      }
+      return {markers: m, legend: [{color: '#0E9F8E', label: i18n.getMessage('Verified link to an offering · {0}', fmt(v.size))}, {color: '#7C3AED', label: i18n.getMessage('Suggested offering, not verified · {0}', fmt(c.size))}, {color: SOFT, label: i18n.getMessage('No link, no evidence. Normal, not a gap.')}]};
+    }
+    ids.forEach(id => (m[id] = ACCENT));
+    return {markers: m, legend: []};
   }
 
   _onUniFocus = e => {
@@ -986,6 +1126,11 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
   };
 
   /* ---------- preparation ---------- */
+  /** Show how a verified change moved the current investigation's count. */
+  _noteImpact(name, before, after) {
+    this._impact = before == null ? null : {before, after, name};
+  }
+
   /** An approved change was saved and read back: bring every cached view in line with the database. */
   _onApplied = async e => {
     const {itemId, persisted, verified} = e.detail;
@@ -995,11 +1140,46 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     applyPersisted(this._model, itemId, persisted);
     const stats = await loadVariableStats().catch(() => null);
     this._readiness = buildAiReadiness(this._model, stats);
-    const countAfter = this._readiness.discovery.affectedIds.length;
-    this._impact = countBefore == null ? null : {before: countBefore, after: countAfter, name: this._model.nodes.find(x => x.id === itemId)?.name};
-    this._visual = buildVisualEnrichment(this._model);
+    this._noteImpact(this._model.nodes.find(x => x.id === itemId)?.name, countBefore, this._readiness.discovery.affectedIds.length);
     this._vars = null;
     if (this._item === itemId) this._loadVars(itemId);
+    this.requestUpdate();
+  };
+
+  /** A form, category or service change was saved and read back: refresh only what it affects. */
+  _onWorkbenchApplied = async e => {
+    const {mode, itemId, verified} = e.detail;
+    if (!verified) return;
+    const name = this._model.nodes.find(x => x.id === itemId)?.name;
+    if (mode === 'form') {
+      const before = this._disc.form?.discovery.affectedIds.length ?? null;
+      await patchVariables(e.detail.changed || []);
+      clearItemVariables(itemId);
+      const [stats, vars] = await Promise.all([loadVariableStats(), loadAllVariables()]);
+      this._disc = {...this._disc, form: buildFormIntelligence(this._model, stats, vars)};
+      this._noteImpact(name, before, this._disc.form.discovery.affectedIds.length);
+      this._readiness = null;
+      this._ensureReadiness();
+    } else if (mode === 'category') {
+      const before = this._disc.taxonomy?.discovery.affectedIds.length ?? null;
+      const was = this._model.nodes.find(x => x.id === itemId)?.fields ?? 0;
+      this._model = await loadCatalog(true);
+      const n = this._model.nodes.find(x => x.id === itemId);
+      if (n && n.fields > was) n.improved = {from: was, to: n.fields, gained: ['category'], at: Date.now()};
+      this._disc = {taxonomy: buildTaxonomy(this._model)};
+      this._readiness = null;
+      this._uniKey++;
+      this._noteImpact(name, before, this._disc.taxonomy.discovery.affectedIds.length);
+      this._ensureReadiness();
+    } else if (mode === 'service') {
+      const before = this._disc.csdm?.discovery.affectedIds.length ?? null;
+      resetServiceData();
+      {
+        const data = await loadServiceData();
+        this._disc = {...this._disc, csdm: {...buildCsdm(this._model, data), data}};
+      }
+      this._noteImpact(name, before, this._disc.csdm.discovery.affectedIds.length);
+    }
     this.requestUpdate();
   };
 
@@ -1014,14 +1194,62 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
 
   _closePrepare = () => {
     this._prepare = false;
+    this._transformFor = null;
+    this._wb = null;
   };
 
-  _openPrepare(e) {
+  /** Open the review workspace of the current investigation, with real grounding data. */
+  async _openPrepare(e) {
     this._opener = e?.currentTarget || this._opener;
     this._prepare = true;
-    if (this._active === 'visual-enrichment' && !this._caps) {
-      checkCapability('image').then(image => (this._caps = {image}));
+    this._wb = null;
+    const mode = WB_MODE[this._active];
+    if (!mode) {
+      this._ensureReadiness();
+      return;
     }
+    if (!this._item) return;
+    const id = this._item;
+    try {
+      this._wb = {id, loading: true};
+      const ctx = await this._buildContext(mode, id);
+      if (this._item === id && this._prepare) this._wb = {id, ctx, mode};
+    } catch (err) {
+      this._wb = {id, error: err?.message || 'error'};
+    }
+  }
+
+  async _buildContext(mode, id) {
+    const n = nodeIndex(this._model).get(id);
+    await loadTextFacts(this._model).catch(() => {});
+    const catTitles = x => x.catIds.map(c => this._model.catTitle[c]).filter(Boolean);
+    const questions = async x => (await loadItemVariables(x.id).catch(() => [])).filter(v => v.label).slice(0, 8).map(v => v.label);
+    const base = async x => ({id: x.id, name: x.name, cls: x.cls, short: x.shortDescription, description: x.descSnippet, categories: catTitles(x), questions: await questions(x), requests: x.requests});
+    if (mode === 'form') {
+      const entry = this._disc.form?.byItem.get(id);
+      const setUsage = this._disc.form?.setUsage;
+      const flagged = (entry?.findings || []).slice(0, 12);
+      const choiceTypes = flagged.filter(f => ['3', '5'].includes(f.variable.type)).map(f => f.variable.id);
+      const choices = choiceTypes.length ? await loadChoices(choiceTypes).catch(() => new Map()) : new Map();
+      return {item: await base(n), variables: flagged.map(f => ({id: f.variable.id, type: f.variable.type, mandatory: f.variable.mandatory, name: f.variable.name, label: f.variable.label, help: f.variable.help, hint: f.variable.hint, issues: f.issues.map(i => i.text), choices: (choices.get(f.variable.id) || []).map(c => c.text), shared: f.shared ? setUsage?.get(f.variable.set) || f.shared : 0}))};
+    }
+    if (mode === 'overlap') {
+      const g = this._disc.overlap.groupOf.get(id);
+      if (!g) throw new Error('This item is not in a candidate group.');
+      const items = await Promise.all(g.ids.slice(0, 6).map(x => base(nodeIndex(this._model).get(x))));
+      return {title: g.ids.length > 1 ? nodeIndex(this._model).get(g.ids[0]).name : n.name, item: {id, name: items.map(i => i.name).join(' · ')}, items, groupKind: g.kind};
+    }
+    if (mode === 'category') {
+      const candidates = categoryCandidates(this._model, id);
+      return {item: {...(await base(n)), categories: catTitles(n)}, candidates, current: [...n.catIds]};
+    }
+    const data = await loadServiceData();
+    const cands = offeringCandidates(this._model, data, id).map(c => ({id: c.offering.id, name: c.offering.name, desc: c.offering.desc}));
+    // verified offerings are always shown to the model so it can say they already match
+    const existing = (data.byItem.get(id) || []).map(l => l.offering);
+    existing.forEach(o => !cands.some(c => c.id === o) && data.offeringById.get(o) && cands.push({id: o, name: data.offeringById.get(o).name, desc: data.offeringById.get(o).desc}));
+    if (!cands.length) throw new Error('No offering shares enough words with this item to be a candidate. That is normal: not every item belongs to an offering.');
+    return {item: await base(n), candidates: cands, existing};
   }
 
   _prepIds() {
@@ -1034,22 +1262,23 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     this._picked = s;
   }
 
-  async _copyBriefs(ids) {
-    const by = nodeIndex(this._model);
-    const text = ids.slice(0, 200).map(id => `${by.get(id).name}\n${visualBrief(by.get(id)).prompt}`).join('\n\n');
+  async _chooseChoices() {
+    const v = this._disc.form?.byItem.get(this._item);
+    if (!v) return;
+    const ids = v.findings.map(f => f.variable.id).concat([]);
+    const selectIds = (await loadItemVariables(this._item).catch(() => [])).filter(x => ['3', '5'].includes(x.type)).map(x => x.id);
+    this._choices = {loading: true};
     try {
-      await navigator.clipboard.writeText(text);
-      this._copied = true;
-    } catch {
-      this._copied = false;
+      this._choices = {by: await loadChoices([...new Set([...ids, ...selectIds])].slice(0, 60))};
+    } catch (e) {
+      this._choices = {error: e.message};
     }
-    this.requestUpdate();
   }
 
   _onKey(e) {
     if (e.key === 'Escape' && this._prepare) {
       e.stopPropagation();
-      this._prepare = false;
+      this._closePrepare();
     }
   }
 
@@ -1068,8 +1297,8 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
         ${this._renderFocus()}
         <div class="stagecol">
           <div class="stagebox">
-            <cat-universe investigate .markers=${markers} .legendItems=${legend} focus-id=${this._cat ?? ''} selected-id=${this._item ?? ''}
-              @cat-universe:focus=${this._onUniFocus} @cat-universe:select=${this._onUniSelect}></cat-universe>
+            ${keyed(this._uniKey, html`<cat-universe investigate .markers=${markers} .legendItems=${legend} focus-id=${this._cat ?? ''} selected-id=${this._item ?? ''}
+              @cat-universe:focus=${this._onUniFocus} @cat-universe:select=${this._onUniSelect}></cat-universe>`)}
             ${this._item ? this._renderInspector() : nothing}
             ${this._prepare ? this._renderPrepare() : nothing}
           </div>
@@ -1080,63 +1309,82 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
 
   _renderFocus() {
     const d = this._current();
-    const loadingReadiness = this._active === 'ai-readiness' && !d;
-    return html`<section class="focus card" aria-label=${i18n.getMessage('Discovery')}>
+    const loading = !d && !this._discError && !(this._active === 'ai-readiness' && this._readinessError);
+    return html`<section class="focus card" aria-label=${i18n.getMessage('Investigation')}>
       <div class="switch" role="group" aria-label=${i18n.getMessage('Choose an investigation')}>
-        ${[['visual-enrichment', i18n.getMessage('Visuals')], ['ai-readiness', i18n.getMessage('AI readiness')], ['csdm-alignment', i18n.getMessage('CSDM')]].map(
-          ([id, label]) => html`<button aria-pressed=${this._active === id} @click=${() => this._openDiscovery(id)}>${label}</button>`
-        )}
+        ${INVESTIGATIONS.map(id => html`<button aria-pressed=${this._active === id} @click=${() => this._openDiscovery(id)}>${LABEL[id]()}</button>`)}
       </div>
-      ${loadingReadiness ? html`<div role="status" class="muted">${i18n.getMessage('Reading variable counts and assessing items…')}</div>` : d ? this._renderDiscovery(d) : nothing}
+      ${this._discError ? html`<div class="note bad" role="alert">${i18n.getMessage('This investigation could not be built ({0}).', this._discError)} <button class="link" @click=${() => { this._discError = ''; this._ensure(this._active); }}>${i18n.getMessage('Retry')}</button></div>` : nothing}
+      ${loading ? html`<div role="status" class="muted">${{'ai-readiness': i18n.getMessage('Reading variable counts and assessing items…'), 'form-intelligence': i18n.getMessage('Reading every form question and checking each one…'), overlap: i18n.getMessage('Looking for items that read alike…'), taxonomy: i18n.getMessage('Checking how items are categorised…'), 'csdm-alignment': i18n.getMessage('Reading service offerings and their links…')}[this._active]}</div>` : d ? this._renderDiscovery(d) : nothing}
     </section>`;
+  }
+
+  _overlapGroupsInScope() {
+    const ov = this._disc.overlap;
+    if (!ov) return [];
+    const scope = new Set(this._scopeIds());
+    return ov.groups.filter(g => g.ids.some(id => scope.has(id)));
   }
 
   _renderDiscovery(d) {
     const scope = this._scopeIds();
     const all = this._scopeIds(false);
-    const foundation = d.status === 'foundation';
-    const total = d.id === 'ai-readiness' ? d.stats.active : this._model.nodes.length;
+    const total = d.stats?.active ?? this._model.nodes.length;
     const dist = distribution(this._model, this._cls ? all : d.affectedIds);
     const topCats = this._allCats ? dist : dist.slice(0, 4);
     const maxCount = dist[0]?.count || 1;
     const types = classBreakdown(this._model, d.affectedIds);
+    const by = nodeIndex(this._model);
+    const groups = d.id === 'overlap' ? this._overlapGroupsInScope() : [];
     return html`
       <div class="focus-body">
       <div class="badges">
         <span class="badge ${d.method.classification === 'ai' ? 'ai' : 'det'}">${d.method.classification === 'ai' ? i18n.getMessage('AI assessment') : i18n.getMessage('Deterministic check')}</span>
-        ${foundation ? html`<span class="badge">${i18n.getMessage('Foundation only')}</span>` : html`<span class="badge ${d.severity.level}">${i18n.getMessage('Prevalence: {0}', this._sev(d.severity.level))}</span>`}
+        <span class="badge ${d.severity.level}">${i18n.getMessage('Prevalence: {0}', this._sev(d.severity.level))}</span>
       </div>
-      <div class="eyebrow">${d.id === 'ai-readiness' ? i18n.getMessage('Discovery · AI readiness') : d.id === 'csdm-alignment' ? i18n.getMessage('Discovery · CSDM') : i18n.getMessage('Discovery · Visual enrichment')}</div>
+      <div class="eyebrow">${EYEBROW[d.id]()}</div>
       <h1>${d.title}</h1>
-      ${foundation ? nothing : html`<div class="count"><b>${fmt(scope.length)}</b><span>${this._cat || this._cls ? i18n.getMessage('in this scope, of {0} affected', fmt(d.affectedIds.length)) : i18n.getMessage('of {0} items', fmt(total))}</span></div>`}
-      ${this._impact && this._impact.before !== this._impact.after ? html`<p class="impact" role="status">✓ ${i18n.getMessage('Counts updated after “{0}” was saved and verified: {1} → {2} items with potential gaps.', this._impact.name || '', fmt(this._impact.before), fmt(this._impact.after))}</p>` : nothing}
+      <div class="count"><b>${fmt(scope.length)}</b><span>${this._cat || this._cls ? i18n.getMessage('in this scope, of {0} affected', fmt(d.affectedIds.length)) : i18n.getMessage('of {0} active items', fmt(total))}</span></div>
+      ${this._impact && this._impact.before !== this._impact.after ? html`<p class="impact" role="status">✓ ${i18n.getMessage('Counts updated after “{0}” was saved and verified: {1} → {2} items flagged.', this._impact.name || '', fmt(this._impact.before), fmt(this._impact.after))}</p>` : nothing}
       <p>${d.summary}</p>
       <p class="muted">${d.why}</p>
       ${d.id === 'ai-readiness' && this._readinessError ? html`<div class="note" role="status">${i18n.getMessage('Variable counts could not be read ({0}). The form check is shown as pending, not as passed.', this._readinessError)}</div>` : nothing}
-      ${foundation ? html`<div class="note info">${i18n.getMessage('Service offerings exist but items do not reference them natively. Nothing is flagged; later phases will propose candidate associations for your review.')}</div>` : html`
-        <div class="scope" role="group" aria-label=${i18n.getMessage('Narrow the investigation')}>
-          ${this._cat ? html`<button class="chip" @click=${() => this._setCat(null)} aria-label=${i18n.getMessage('Clear category {0}', this._model.clusters.find(c => c.id === this._cat)?.title)}>${this._model.clusters.find(c => c.id === this._cat)?.title} ✕</button>` : nothing}
-          <label class="vh" for="cls">${i18n.getMessage('Item type')}</label>
-          <select id="cls" class="chip" .value=${this._cls} @change=${e => this._setCls(e.target.value)}>
-            <option value="">${i18n.getMessage('All item types')}</option>
-            ${types.map(([c, n]) => html`<option value=${c} ?selected=${this._cls === c}>${classLabel(c)} · ${fmt(n)}</option>`)}
-          </select>
-          ${this._picked.size ? html`<button class="chip" @click=${() => (this._picked = new Set())}>${i18n.getMessage('{0} chosen', fmt(this._picked.size))} ✕</button>` : nothing}
+      <div class="scope" role="group" aria-label=${i18n.getMessage('Narrow the investigation')}>
+        ${this._cat ? html`<button class="chip" @click=${() => this._setCat(null)} aria-label=${i18n.getMessage('Clear category {0}', this._model.clusters.find(c => c.id === this._cat)?.title)}>${this._model.clusters.find(c => c.id === this._cat)?.title} ✕</button>` : nothing}
+        <label class="vh" for="cls">${i18n.getMessage('Item type')}</label>
+        <select id="cls" class="chip" .value=${this._cls} @change=${e => this._setCls(e.target.value)}>
+          <option value="">${i18n.getMessage('All item types')}</option>
+          ${types.map(([c, n]) => html`<option value=${c} ?selected=${this._cls === c}>${classLabel(c)} · ${fmt(n)}</option>`)}
+        </select>
+        ${this._picked.size ? html`<button class="chip" @click=${() => (this._picked = new Set())}>${i18n.getMessage('{0} chosen', fmt(this._picked.size))} ✕</button>` : nothing}
+      </div>
+      ${d.id === 'overlap' ? html`<div>
+          <div class="muted" id="grp">${i18n.getMessage('Candidate groups in scope')}</div>
+          <ul class="recs" aria-labelledby="grp">${groups.slice(0, 6).map(g => html`<li class="rec"><span class="dot" style="background:${KIND_COLOR[g.kind]}" aria-hidden="true"></span>
+            <button class="name" aria-pressed=${g.ids.includes(this._item)} @click=${() => this._setItem(g.ids[0])}>${by.get(g.ids[0]).name}<small> · ${i18n.getMessage('{0} items', fmt(g.ids.length))} · ${OVERLAP_KIND[g.kind].label()}</small></button><span></span></li>`)}</ul>
+          ${groups.length > 6 ? html`<p class="muted">${i18n.getMessage('and {0} more groups. Focus a category to narrow them.', fmt(groups.length - 6))}</p>` : nothing}</div>` : nothing}
+      ${d.id === 'taxonomy' ? this._renderTaxonomyExtras(d) : nothing}
+      <div>
+        <div class="muted" id="dist">${i18n.getMessage('Where it is, by category')}</div>
+        <div class="bars" role="group" aria-labelledby="dist">
+          ${topCats.map(c => html`<button class="bar" aria-pressed=${this._cat === c.id} @click=${() => this._setCat(this._cat === c.id ? null : c.id)}>
+            <span>${c.title}</span><span>${fmt(c.count)} / ${fmt(c.of)}</span><div class="track"><div class="fill" style="width:${(100 * c.count) / maxCount}%"></div></div></button>`)}
         </div>
-        <div>
-          <div class="muted" id="dist">${i18n.getMessage('Where it is, by category')}</div>
-          <div class="bars" role="group" aria-labelledby="dist">
-            ${topCats.map(c => html`<button class="bar" aria-pressed=${this._cat === c.id} @click=${() => this._setCat(this._cat === c.id ? null : c.id)}>
-              <span>${c.title}</span><span>${fmt(c.count)} / ${fmt(c.of)}</span><div class="track"><div class="fill" style="width:${(100 * c.count) / maxCount}%"></div></div></button>`)}
-          </div>
-          ${dist.length > 4 ? html`<button class="link" @click=${() => (this._allCats = !this._allCats)}>${this._allCats ? i18n.getMessage('Show fewer') : i18n.getMessage('Show all {0} categories', fmt(dist.length))}</button>` : nothing}
-        </div>`}
+        ${dist.length > 4 ? html`<button class="link" @click=${() => (this._allCats = !this._allCats)}>${this._allCats ? i18n.getMessage('Show fewer') : i18n.getMessage('Show all {0} categories', fmt(dist.length))}</button>` : nothing}
+      </div>
       </div>
       <div class="focus-foot">
-        <button class="primary" ?disabled=${foundation || !scope.length} @click=${this._openPrepare}>${d.recommendedAction.label}</button>
+        <button class="primary" ?disabled=${!scope.length} @click=${this._openPrepare}>${d.recommendedAction.label}</button>
         <p class="muted">${d.recommendedAction.summary}</p>
         <button class="link" aria-expanded=${this._drawer} @click=${() => (this._drawer = !this._drawer)}>${this._drawer ? i18n.getMessage('Hide the reasoning') : i18n.getMessage('Why this finding?')}</button>
       </div>`;
+  }
+
+  _renderTaxonomyExtras(d) {
+    const o = d.stats.overlaps;
+    const names = c => c.categories.map(x => x.title).join(' / ');
+    return html`${d.stats.genericCategories.length ? html`<p class="muted">${i18n.getMessage('Vaguely named categories: {0}.', d.stats.genericCategories.slice(0, 5).map(c => c.title).join(', '))}</p>` : nothing}
+      ${o.length ? html`<details><summary class="muted">${i18n.getMessage('{0} categories look alike', fmt(o.length))}</summary><ul>${o.slice(0, 8).map(c => html`<li>${names(c)} <span class="muted">${c.kind === 'same' ? i18n.getMessage('same name') : i18n.getMessage('very similar')}</span></li>`)}</ul></details>` : nothing}`;
   }
 
   _sev(l) {
@@ -1178,7 +1426,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
           <h3>${i18n.getMessage('Certainty')}</h3>
           <p>${d.method.classification === 'deterministic' ? i18n.getMessage('Exact: each finding is a direct check of a record field, so there is no confidence estimate to give.') : i18n.getMessage('Model-generated: treat as a suggestion.')}</p>
           <h3>${i18n.getMessage('Prevalence')}</h3><p>${d.severity.rationale}</p>
-          ${d.id === 'ai-readiness' ? html`<h3>${i18n.getMessage('Gaps found by each check, active items')}</h3><ul>${d.stats.perCheck.map(p => html`<li>${p.check.label()}: <b>${fmt(p.failed)}</b></li>`)}</ul>` : nothing}
+          ${d.stats?.perCheck ? html`<h3>${i18n.getMessage('Items flagged by each check')}</h3><ul>${d.stats.perCheck.map(p => html`<li>${p.check.label()}: <b>${fmt(p.failed)}</b></li>`)}</ul>` : nothing}
           <h3>${i18n.getMessage('Assessed')}</h3><p>${new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(d.assessedAt))} · ${d.version}</p>`;
       case 'records': {
         const ids = this._scopeIds();
@@ -1194,14 +1442,13 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       }
       default:
         return html`<ol>${d.nextSteps.map(s => html`<li>${s}</li>`)}</ol>
-          <div class="note info">${i18n.getMessage('Every step that would change a record needs your explicit approval and is not part of this phase. This page reads records only.')}</div>`;
+          <div class="note info">${i18n.getMessage('Discovery only reads records. Anything that would change a record is generated as a proposal, reviewed by you, and saved only after your explicit confirmation, then read back to verify.')}</div>`;
     }
   }
 
   _renderInspector() {
     const n = nodeIndex(this._model).get(this._item);
     if (!n) return nothing;
-    const d = this._current();
     return html`<aside class="inspector card" aria-label=${i18n.getMessage('Item details')}>
       <button class="close" aria-label=${i18n.getMessage('Close details')} @click=${() => this._setItem(null)}>✕</button>
       <h2>${n.name}</h2>
@@ -1210,21 +1457,88 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       <p>${n.shortDescription || html`<em>${i18n.getMessage('None')}</em>`}</p>
       <h3>${i18n.getMessage('Description')}</h3>
       <p>${n.ctx === null ? html`<em role="status">${i18n.getMessage('Loading…')}</em>` : n.descSnippet ? n.descSnippet + (n.descLen > n.descSnippet.length ? '…' : '') : html`<em>${i18n.getMessage('None')}</em>`}</p>
-      ${this._active === 'ai-readiness' ? this._renderReadinessItem(n) : this._active === 'visual-enrichment' ? this._renderVisualItem(n, d) : nothing}
+      ${{'ai-readiness': () => this._renderReadinessItem(n), 'form-intelligence': () => this._renderFormItem(n), overlap: () => this._renderOverlapItem(n), taxonomy: () => this._renderTaxonomyItem(n), 'csdm-alignment': () => this._renderCsdmItem(n)}[this._active]()}
       <h3>${i18n.getMessage('Record')}</h3>
       <dl class="kv">
         <dt>${i18n.getMessage('Categories')}</dt><dd>${n.catIds.length ? n.catIds.map(id => this._model.catTitle[id] || id).join(', ') : i18n.getMessage('None')}</dd>
         <dt>${i18n.getMessage('Requests')}</dt><dd>${fmt(n.requests)}</dd>
       </dl>
-      <p style="margin-top:8px"><a class="link" href=${`/sc_cat_item.do?sys_id=${n.id}`} target="_blank" rel="noopener noreferrer">${i18n.getMessage('Open record')} ↗<span class="vh"> ${i18n.getMessage('(opens in a new tab)')}</span></a></p>
+      <p class="links"><a class="link" href=${`/sc_cat_item.do?sys_id=${n.id}`} target="_blank" rel="noopener noreferrer">${i18n.getMessage('Open record')} ↗<span class="vh"> ${i18n.getMessage('(opens in a new tab)')}</span></a></p>
     </aside>`;
   }
 
-  _renderVisualItem(n) {
-    const b = visualBrief(n);
-    return html`<h3>${i18n.getMessage('Visual')}</h3>
-      <ul class="checks"><li><span class="mark ${n.flags.icon ? 'pass' : 'fail'}" aria-hidden="true">${n.flags.icon ? '✓' : '✕'}</span><span>${i18n.getMessage('Icon or picture')} · ${n.flags.icon ? i18n.getMessage('present') : i18n.getMessage('missing')}</span></li></ul>
-      ${n.flags.icon ? nothing : html`<h3>${i18n.getMessage('Visual brief')}</h3><p class="muted">${i18n.getMessage('Built from this record only (not AI output).')}</p><p>${b.prompt}</p>`}`;
+  _action(label) {
+    return html`<div class="actions"><button class="primary" @click=${this._openPrepare}>${label}</button></div>`;
+  }
+
+  _renderFormItem(n) {
+    const f = this._disc.form;
+    if (!f) return html`<p class="muted" role="status">${i18n.getMessage('Reading form questions…')}</p>`;
+    const e = f.byItem.get(n.id);
+    if (!e) return html`<h3>${i18n.getMessage('Form')}</h3><p class="muted">${n.active ? i18n.getMessage('This item has no input questions.') : i18n.getMessage('Inactive items are not assessed.')}</p>`;
+    const ch = this._choices;
+    return html`<h3>${i18n.getMessage('Form')}</h3>
+      <dl class="kv"><dt>${i18n.getMessage('Inputs')}</dt><dd>${fmt(e.inputs)}</dd><dt>${i18n.getMessage('Required')}</dt><dd>${fmt(e.required)}</dd><dt>${i18n.getMessage('To review')}</dt><dd>${fmt(e.findings.length)}</dd></dl>
+      ${e.findings.length ? html`<h3>${i18n.getMessage('Questions worth reviewing')}</h3>
+        <ul class="checks">${e.findings.slice(0, 12).map(x => html`<li><span class="mark fail" aria-hidden="true">✕</span><span><details><summary>${x.variable.label || x.variable.name}${x.shared ? html` <span class="badge">${i18n.getMessage('shared by {0} items', fmt(x.shared))}</span>` : nothing}</summary>
+          <ul>${x.issues.map(i => html`<li>${i.text}</li>`)}</ul>
+          <dl class="kv"><dt>${i18n.getMessage('Variable name')}</dt><dd>${x.variable.name}</dd><dt>${i18n.getMessage('Type')}</dt><dd>${x.variable.type}</dd><dt>${i18n.getMessage('Required')}</dt><dd>${x.variable.mandatory ? i18n.getMessage('yes') : i18n.getMessage('no')}</dd>
+          <dt>${i18n.getMessage('Help text')}</dt><dd>${x.variable.help || x.variable.hint || i18n.getMessage('none')}</dd></dl></details></span></li>`)}</ul>
+        ${e.findings.length > 12 ? html`<p class="muted">${i18n.getMessage('and {0} more', fmt(e.findings.length - 12))}</p>` : nothing}`
+        : html`<p class="muted">${i18n.getMessage('No question needs review.')}</p>`}
+      <p><button class="link" @click=${this._chooseChoices}>${i18n.getMessage('Check answer choices')}</button></p>
+      ${ch?.loading ? html`<p class="muted" role="status">${i18n.getMessage('Reading choices…')}</p>` : ch?.error ? html`<div class="note bad">${ch.error}</div>` : ch?.by ? this._renderChoiceFindings(e, ch.by) : nothing}
+      ${e.findings.length ? this._action(i18n.getMessage('Improve this form')) : nothing}`;
+  }
+
+  _renderChoiceFindings(e, by) {
+    const label = id => e.findings.find(f => f.variable.id === id)?.variable.label || id;
+    const bad = [...by.entries()].flatMap(([vid, list]) => list.filter(c => c.issues.length).map(c => ({vid, c})));
+    return bad.length
+      ? html`<div class="note">${i18n.getMessage('{0} answer choice(s) to review.', fmt(bad.length))}<ul>${bad.slice(0, 8).map(({vid, c}) => html`<li>${label(vid)}: “${c.text || c.value}” · ${c.issues.join(' ')}</li>`)}</ul></div>`
+      : html`<p class="muted">${i18n.getMessage('No problems found in the answer choices that were read.')}</p>`;
+  }
+
+  _renderOverlapItem(n) {
+    const o = this._disc.overlap;
+    if (!o) return html`<p class="muted" role="status">${i18n.getMessage('Looking for similar items…')}</p>`;
+    const g = o.groupOf.get(n.id);
+    if (!g) return html`<h3>${i18n.getMessage('Overlap')}</h3><p class="muted">${n.active ? i18n.getMessage('Not in any candidate group.') : i18n.getMessage('Inactive items are not assessed.')}</p>`;
+    const by = nodeIndex(this._model);
+    return html`<h3>${i18n.getMessage('Candidate group')}</h3>
+      <p><span class="badge" style="background:${KIND_COLOR[g.kind]};color:#fff">${OVERLAP_KIND[g.kind].label()}</span> <span class="muted">${OVERLAP_KIND[g.kind].blurb()}</span></p>
+      <ul class="checks">${g.ids.map(id => {
+        const m = by.get(id);
+        return html`<li><span class="mark ${id === n.id ? 'pass' : 'na'}" aria-hidden="true">${id === n.id ? '●' : '○'}</span><span><button class="name" @click=${() => this._setItem(id)}>${m.name}</button>
+          <small>${classLabel(m.cls)} · ${m.catIds.map(c => this._model.catTitle[c]).join(', ') || i18n.getMessage('no category')} · ${i18n.getMessage('{0} requests', fmt(m.requests))}</small>
+          <small>${m.shortDescription || i18n.getMessage('No short description')}</small></span></li>`;
+      })}</ul>
+      <h3>${i18n.getMessage('Evidence')}</h3>
+      <ul>${g.evidence.map(x => html`<li>${x.text}</li>`)}</ul>
+      <p class="muted">${i18n.getMessage('A group is a candidate to compare, not proof of duplication.')}</p>
+      ${this._action(i18n.getMessage('Compare this group'))}`;
+  }
+
+  _renderTaxonomyItem(n) {
+    const t = this._disc.taxonomy;
+    if (!t) return html`<p class="muted" role="status">${i18n.getMessage('Checking categories…')}</p>`;
+    const f = t.findings.get(n.id) || [];
+    return html`<h3>${i18n.getMessage('Discoverability')}</h3>
+      ${f.length ? html`<ul class="checks">${f.map(x => html`<li><span class="mark fail" aria-hidden="true">✕</span><span>${TAXONOMY_ISSUE[x.kind]()}<small>${x.text}</small></span></li>`)}</ul>` : html`<p class="muted">${i18n.getMessage('No signal found for this item. You can still ask for a recommendation.')}</p>`}
+      <p class="muted">${i18n.getMessage('An item can validly belong to several categories. A recommendation only adds a category; it never removes one.')}</p>
+      ${this._action(i18n.getMessage('Recommend a category'))}`;
+  }
+
+  _renderCsdmItem(n) {
+    const c = this._disc.csdm;
+    if (!c) return html`<p class="muted" role="status">${i18n.getMessage('Reading service links…')}</p>`;
+    const data = c.data;
+    const links = data.byItem.get(n.id) || [];
+    const cands = c.candidates.get(n.id) || [];
+    return html`<h3>${i18n.getMessage('Service alignment')}</h3>
+      ${links.length ? html`<p><span class="badge ok">${i18n.getMessage('Verified link')}</span></p><ul>${links.map(l => html`<li>${data.offeringById.get(l.offering)?.name || l.offering}</li>`)}</ul>` : html`<p class="muted">${i18n.getMessage('No verified link to a service offering. That is normal and not a gap.')}</p>`}
+      ${cands.length ? html`<h3>${i18n.getMessage('Suggested, not verified')}</h3><ul>${cands.map(x => html`<li><b>${x.offering.name}</b><br><small class="muted">${x.contained ? i18n.getMessage('The offering’s name appears in the item’s name or summary.') : i18n.getMessage('The names share {0} meaningful words.', String(x.nameShared))}</small></li>`)}</ul>` : nothing}
+      ${this._action(i18n.getMessage('Check service alignment'))}`;
   }
 
   _renderReadinessItem(n) {
@@ -1238,75 +1552,57 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       ${!v || v.loading ? html`<p class="muted" role="status">${i18n.getMessage('Reading this item’s variables…')}</p>`
         : v.error ? html`<div class="note bad">${v.error}</div>`
         : html`<dl class="kv"><dt>${i18n.getMessage('Inputs')}</dt><dd>${fmt(v.review.inputs)}</dd><dt>${i18n.getMessage('Required')}</dt><dd>${fmt(v.review.required)}</dd></dl>
-          ${v.review.findings.length ? html`<ul class="checks" style="margin-top:6px">${v.review.findings.slice(0, 6).map(f => html`<li><span class="mark fail" aria-hidden="true">✕</span><span>${f.variable.label || f.variable.name}<small>${f.issues.join(' ')}</small></span></li>`)}</ul>
-            ${v.review.findings.length > 6 ? html`<p class="muted">${i18n.getMessage('and {0} more', fmt(v.review.findings.length - 6))}</p>` : nothing}`
-            : html`<p class="muted">${v.review.inputs ? i18n.getMessage('No label or help-text gaps found in this item’s variables.') : i18n.getMessage('This item has no input variables.')}</p>`}
-          ${v.review.ambiguous.length ? html`<div class="note">${i18n.getMessage('Repeated labels: {0}', v.review.ambiguous.map(x => `${x.label} (${x.count})`).join(', '))}</div>` : nothing}`}
+          <p class="muted">${i18n.getMessage('Open the Forms investigation for a full review of this item’s questions.')} <button class="link" @click=${() => this._openDiscovery('form-intelligence')}>${i18n.getMessage('Open Forms')}</button></p>`}
       <h3>${i18n.getMessage('Fulfilment context')}</h3>
-      <dl class="kv"><dt>${i18n.getMessage('Owner')}</dt><dd>${n.ctx.owner ? i18n.getMessage('set') : i18n.getMessage('not set')}</dd>
-        <dt>${i18n.getMessage('Group')}</dt><dd>${n.ctx.group ? i18n.getMessage('set') : i18n.getMessage('not set')}</dd>
-        <dt>${i18n.getMessage('Fulfilment reference')}</dt><dd>${n.ctx.fulfilment ? i18n.getMessage('set') : i18n.getMessage('not set')}</dd></dl>
+      <dl class="kv"><dt>${i18n.getMessage('Owner')}</dt><dd>${n.ctx?.owner ? i18n.getMessage('set') : i18n.getMessage('not set')}</dd>
+        <dt>${i18n.getMessage('Group')}</dt><dd>${n.ctx?.group ? i18n.getMessage('set') : i18n.getMessage('not set')}</dd>
+        <dt>${i18n.getMessage('Fulfilment reference')}</dt><dd>${n.ctx?.fulfilment ? i18n.getMessage('set') : i18n.getMessage('not set')}</dd></dl>
       <p class="muted">${i18n.getMessage('Shown for context only. It does not count against the item.')}</p>
-      <h3>${i18n.getMessage('CSDM')}</h3><p class="muted">${i18n.getMessage('Assessed separately; no service association is expected here.')}</p>
       <h3>${i18n.getMessage('Semantic assessment')}</h3>
-      <cat-semantic-assess item-id=${n.id}></cat-semantic-assess>`;
+      <cat-semantic-assess item-id=${n.id}></cat-semantic-assess>
+      ${this._action(i18n.getMessage('Prepare AI Readiness Improvements'))}`;
   }
 
   _renderPrepare() {
-    const d = this._current();
-    if (d.id === 'ai-readiness') return this._renderTransform();
-    const ids = this._prepIds();
+    if (this._transformFor || this._active === 'ai-readiness') return this._renderTransform();
+    if (!this._item) return this._renderChooser();
+    return this._renderWorkbench();
+  }
+
+  _renderChooser() {
     const by = nodeIndex(this._model);
-    return html`<div class="scrim">
-      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="prep-title">
-        <div class="eyebrow">${i18n.getMessage('Preparation · nothing is changed')}</div>
-        <h2 id="prep-title" tabindex="-1">${d.recommendedAction.label}</h2>
-        <div class="step">
-          <h3>${i18n.getMessage('Scope')}</h3>
-          <p>${i18n.getMessage('{0} item(s) will be prepared.', fmt(ids.length))} ${this._picked.size ? i18n.getMessage('You chose these items.') : this._item ? i18n.getMessage('The selected item.') : i18n.getMessage('Everything in the current scope.')}</p>
-          <ul>${ids.slice(0, 6).map(id => html`<li>${by.get(id).name}</li>`)}${ids.length > 6 ? html`<li class="muted">${i18n.getMessage('and {0} more', fmt(ids.length - 6))}</li>` : nothing}</ul>
-        </div>
-        ${this._renderPrepareVisual(ids)}
-        <div class="actions"><button class="primary" @click=${this._closePrepare}>${i18n.getMessage('Close')}</button></div>
-      </div></div>`;
+    const choices = this._scopeIds().slice(0, 12);
+    return html`<div class="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="prep-title">
+      <div class="eyebrow">${i18n.getMessage('Review workspace')}</div>
+      <h2 id="prep-title" tabindex="-1">${i18n.getMessage('Choose an item')}</h2>
+      <p class="muted">${i18n.getMessage('This works on one item at a time. Pick one that was flagged.')}</p>
+      <ul class="recs">${choices.map(id => html`<li class="rec"><span></span><button class="name" @click=${() => { this._setItem(id); this._openPrepare(); }}>${by.get(id).name}<small> · ${classLabel(by.get(id).cls)}</small></button><span></span></li>`)}</ul>
+      <div class="actions"><button class="ghost" @click=${this._closePrepare}>${i18n.getMessage('Close')}</button></div>
+    </div></div>`;
+  }
+
+  _renderWorkbench() {
+    const w = this._wb;
+    return html`<div class="scrim"><div class="sheet wide" role="dialog" aria-modal="true" aria-label=${i18n.getMessage('Review workspace')}>
+      ${!w || w.loading ? html`<h2 id="prep-title" tabindex="-1">${i18n.getMessage('Preparing')}</h2><p role="status" class="muted">${i18n.getMessage('Reading the real records for this item…')}</p>`
+        : w.error ? html`<h2 id="prep-title" tabindex="-1">${i18n.getMessage('Nothing to prepare')}</h2><div class="note info" role="status">${w.error}</div>`
+        : html`<cat-workbench .mode=${w.mode} .context=${w.ctx} @cat-workbench:applied=${this._onWorkbenchApplied} @cat-workbench:close=${this._closePrepare} @cat-workbench:explore=${this._openExplore}
+            @cat-workbench:improve=${e => { this._setItem(e.detail.itemId); this._transformFor = e.detail.itemId; this._wb = null; this._ensureReadiness(); }}
+            @cat-workbench:select=${e => { this._closePrepare(); this._setItem(e.detail.itemId); }}></cat-workbench>`}
+      <div class="actions"><button class="ghost" @click=${this._closePrepare}>${i18n.getMessage('Close workspace')}</button></div>
+    </div></div>`;
   }
 
   /** One item, one proposal, one review, one decision. */
   _renderTransform() {
-    const by = nodeIndex(this._model);
-    if (!this._item) {
-      const choices = this._scopeIds().slice(0, 12);
-      return html`<div class="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="prep-title">
-        <div class="eyebrow">${i18n.getMessage('Transform workspace')}</div>
-        <h2 id="prep-title" tabindex="-1">${i18n.getMessage('Choose an item to improve')}</h2>
-        <p class="muted">${i18n.getMessage('Transform works on one item at a time. Pick one with potential AI readiness gaps.')}</p>
-        <ul class="recs">${choices.map(id => html`<li class="rec"><span></span><button class="name" @click=${() => this._setItem(id)}>${by.get(id).name}<small> · ${classLabel(by.get(id).cls)}</small></button><span></span></li>`)}</ul>
-        <div class="actions"><button class="ghost" @click=${this._closePrepare}>${i18n.getMessage('Close')}</button></div>
-      </div></div>`;
+    if (!this._item) return this._renderChooser();
+    if (!this._readiness) {
+      return html`<div class="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-label=${i18n.getMessage('Transform workspace')}><p role="status" class="muted">${i18n.getMessage('Preparing the metadata checks…')}</p>
+        <div class="actions"><button class="ghost" @click=${this._closePrepare}>${i18n.getMessage('Close')}</button></div></div></div>`;
     }
     return html`<div class="scrim"><div class="sheet wide" role="dialog" aria-modal="true" aria-label=${i18n.getMessage('Transform workspace')}>
       <cat-transform item-id=${this._item} .readiness=${this._readiness} @cat-transform:applied=${this._onApplied} @cat-transform:close=${this._closePrepare} @cat-transform:explore=${this._openExplore}></cat-transform>
       <div class="actions"><button class="ghost" @click=${this._closePrepare}>${i18n.getMessage('Close workspace')}</button></div>
     </div></div>`;
-  }
-
-  _renderPrepareVisual(ids) {
-    const c = this._caps?.image;
-    const by = nodeIndex(this._model);
-    return html`<div class="step">
-        <h3>2 · ${i18n.getMessage('Can visuals be generated?')}</h3>
-        ${!c ? html`<p role="status" class="muted">${i18n.getMessage('Checking the image-generation capability…')}</p>`
-          : c.state === 'no-definition' ? html`<div class="note bad">${i18n.getMessage('Not available on this instance. The “{0}” capability exists, but it has {1} executable definitions, so it cannot produce images. A test call on {2} was rejected: “{3}”.', c.name, String(c.definitions), c.verification.date, 'Plan invalid or not created')}</div>
-            <p class="muted">${i18n.getMessage('To enable it, an administrator would need to configure a provider definition for this capability (or approve another image service). Nothing was changed to find this out.')}</p>`
-          : c.state === 'defined' ? html`<div class="note">${i18n.getMessage('A definition exists, but it has not been verified to work, so no generation is offered yet.')}</div>`
-          : html`<div class="note">${i18n.getMessage('The capability could not be checked ({0}).', c.error || c.state)}</div>`}
-      </div>
-      <div class="step">
-        <h3>3 · ${i18n.getMessage('Proposed visuals for review')}</h3>
-        <p>${i18n.getMessage('No visuals have been generated, so there is nothing to review. Each proposal will appear here with approve, reject and regenerate controls.')}</p>
-        <p class="muted">${i18n.getMessage('The brief below is what a generator would receive. It is built from each record and is not AI output.')}</p>
-        ${ids.slice(0, 3).map(id => html`<details><summary>${by.get(id).name}</summary><p>${visualBrief(by.get(id)).prompt}</p></details>`)}
-        <div class="actions"><button class="ghost" @click=${() => this._copyBriefs(ids)}>${this._copied ? i18n.getMessage('Copied') : i18n.getMessage('Copy briefs')}</button></div>
-      </div>`;
   }
 }

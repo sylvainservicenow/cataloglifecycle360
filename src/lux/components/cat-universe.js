@@ -1517,8 +1517,11 @@ export default class CatUniverse extends AIUXElement {
         <dt>${i18n.getMessage('Updated')}</dt><dd>${this._fmtDate(n.updated)}</dd>
       </dl>
       <div class="tags">
-        ${!n.flags.icon ? html`<button class="chip" @click=${() => this._investigate('visual-enrichment', n.id)}>${i18n.getMessage('Investigate visual')}</button>` : nothing}
-        <button class="chip" @click=${() => this._investigate('ai-readiness', n.id)}>${i18n.getMessage('Investigate AI readiness')}</button>
+        <button class="chip" @click=${() => this._investigate('ai-readiness', n.id)}>${i18n.getMessage('Metadata')}</button>
+        <button class="chip" @click=${() => this._investigate('form-intelligence', n.id)}>${i18n.getMessage('Form')}</button>
+        <button class="chip" @click=${() => this._investigate('overlap', n.id)}>${i18n.getMessage('Similar items')}</button>
+        <button class="chip" @click=${() => this._investigate('taxonomy', n.id)}>${i18n.getMessage('Category')}</button>
+        <button class="chip" @click=${() => this._investigate('csdm-alignment', n.id)}>${i18n.getMessage('Service')}</button>
       </div>
       <a class="open" href=${`/sc_cat_item.do?sys_id=${n.id}`} target="_blank" rel="noopener noreferrer">${i18n.getMessage('Open record')} ↗<span class="vh"> ${i18n.getMessage('(opens in a new tab)')}</span></a>
     </aside>`;
@@ -1606,7 +1609,7 @@ export default class CatUniverse extends AIUXElement {
         ${st.worst ? html`<small>${i18n.getMessage('Most affected category: {0} ({1} of {2} items)', st.worst.title, fmt(st.worst.m), fmt(st.worst.n))}</small>` : nothing}
         <small>${i18n.getMessage('Counted directly from catalog records.')}</small></span>
       <button class="cta" @click=${() => (active ? this._setLens('overview') : ((this._lens = 'quality'), (this._gap = st.key)))}>${active ? i18n.getMessage('Clear') : i18n.getMessage('Show where')}</button>
-      ${st.key !== 'category' ? html`<button class="cta alt" @click=${() => this._investigate(st.key === 'icon' ? 'visual-enrichment' : 'ai-readiness')}>${i18n.getMessage('Investigate')}</button>` : nothing}
+      ${st.key !== 'icon' ? html`<button class="cta alt" @click=${() => this._investigate(st.key === 'category' ? 'taxonomy' : 'ai-readiness')}>${i18n.getMessage('Investigate')}</button>` : nothing}
     </div>`;
   }
 

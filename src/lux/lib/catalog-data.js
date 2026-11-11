@@ -412,6 +412,10 @@ async function buildVariableStats() {
 }
 
 const varCache = new Map();
+/** Forget one item's cached variables after a verified change to them. */
+export function clearItemVariables(itemId) {
+  varCache.delete(itemId);
+}
 /** The actual variables behind one catalog item (its own plus those from its variable sets). */
 export function loadItemVariables(itemId) {
   if (!varCache.has(itemId)) {
