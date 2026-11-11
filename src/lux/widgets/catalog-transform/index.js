@@ -42,6 +42,7 @@ export default class CatTransform extends AIUXWidgetElement {
   static styles = css`
     :host {
       display: block;
+      container-type: inline-size;
       color: #1b1b1b;
       font-size: 0.9rem;
     }
@@ -174,7 +175,7 @@ export default class CatTransform extends AIUXWidgetElement {
       grid-template-columns: 1fr 1fr;
       gap: 10px;
     }
-    @media (max-width: 640px) {
+    @container (max-width: 560px) {
       .cols {
         grid-template-columns: 1fr;
       }

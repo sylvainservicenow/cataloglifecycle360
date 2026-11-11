@@ -51,6 +51,7 @@ export default class CatUniverse extends AIUXElement {
     legendItems: {attribute: false}, // [{color, label}] describing the markers
     focusId: {attribute: 'focus-id'}, // category (cluster) id to focus
     selectedId: {attribute: 'selected-id'}, // item sys_id to select
+    hideDetail: {type: Boolean, attribute: 'hide-detail'}, // the host shows the item inspector, so the built-in detail panel stays hidden
     lens: {type: String}, // lens to open with (e.g. 'quality'), set by the host page
     _model: {state: true},
     _error: {state: true},
@@ -883,6 +884,7 @@ export default class CatUniverse extends AIUXElement {
     this.focusId = null;
     this.selectedId = null;
     this.lens = '';
+    this.hideDetail = false;
     this._model = null;
     this._error = '';
     this._lens = 'overview';
@@ -1359,7 +1361,7 @@ export default class CatUniverse extends AIUXElement {
       <div class="stage">
         ${this._narrow ? html`<div class="state" role="status"><small>${i18n.getMessage('Not enough room here. Collapse the sidebar or widen the window.')}</small></div>` : nothing}
         ${guard([this._model, this._lens, this._gap, this._focus, this._selected, this.compact, this._matchKey(), this.markers], () => this._renderSvg())}
-        ${this.compact ? this._renderEnter() : html`${this._renderCrumbs()}${this._renderZoom()}${this._selected && !this.investigate ? this._renderDetail() : nothing}${this._renderDock()}`}
+        ${this.compact ? this._renderEnter() : html`${this._renderCrumbs()}${this._renderZoom()}${this._selected && !this.investigate && !this.hideDetail ? this._renderDetail() : nothing}${this._renderDock()}`}
         ${this._hover ? this._renderTip() : nothing}
         <div class="vh" aria-live="polite">${this._focus ? i18n.getMessage('Exploring {0}', this._layout.titles.get(this._focus)) : nothing}</div>
       </div>
@@ -1372,7 +1374,7 @@ export default class CatUniverse extends AIUXElement {
 
   _renderZoom() {
     const b = (label, glyph, fn) => html`<button class="zbtn" aria-label=${label} title=${label} @click=${fn}>${glyph}</button>`;
-    return html`<div class="zoom glass ${classMap({shift: !!this._selected && !this.investigate})}" role="group" aria-label=${i18n.getMessage('Zoom and pan')}>
+    return html`<div class="zoom glass ${classMap({shift: !!this._selected && !this.investigate && !this.hideDetail})}" role="group" aria-label=${i18n.getMessage('Zoom and pan')}>
       ${b(i18n.getMessage('Zoom in'), '+', () => this._zoomBy(0.6))}
       ${b(i18n.getMessage('Pan up'), '↑', () => this._panBy(0, -0.2))}
       ${b(i18n.getMessage('Zoom out'), '−', () => this._zoomBy(1.6))}
