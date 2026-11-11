@@ -455,6 +455,30 @@ export default class CatTransform extends AIUXWidgetElement {
   }
 
   /**
+   * The platform refuses edits to a record whose application differs from the user's
+   * current application and reports it as a generic ACL failure. Compare the two so the
+   * person gets the real reason and the action to take. Returns null when they match
+   * or when either side cannot be read.
+   */
+  async _scopeMismatch(url) {
+    try {
+      const rec = (await getJson(`${url}?sysparm_fields=sys_scope.scope,sys_scope.name&sysparm_exclude_reference_link=true`)).rows;
+      const r = Array.isArray(rec) ? rec[0] : rec;
+      const cur = await (await aiuxFetch('/api/now/ui/concoursepicker/current', {headers: {Accept: 'application/json'}})).json();
+      const app = cur?.result?.currentApplication;
+      const recordScope = r?.['sys_scope.scope'];
+      if (!recordScope || !app?.scopeName || recordScope === app.scopeName) return null;
+      return {recordScope, recordApp: r['sys_scope.name'] || recordScope, currentScope: app.scopeName, currentApp: app.name || app.scopeName};
+    } catch {
+      return null;
+    }
+  }
+
+  _scopeMessage(m) {
+    return i18n.getMessage('This item belongs to the {0} application, but your current application is {1}. Switch the application picker to {0}, then try again. Nothing was changed.', m.recordApp, m.currentApp);
+  }
+
+  /**
    * Apply through the standard Table REST API as the signed-in user: native ACLs
    * decide, and no cross-scope privilege is involved. Order: fresh read and stale
    * check, update only the approved fields, read back from the database.
@@ -504,6 +528,10 @@ export default class CatTransform extends AIUXWidgetElement {
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         const msg = (() => { try { return JSON.parse(text)?.error?.message || ''; } catch { return ''; } })();
+        if (res.status === 401 || res.status === 403) {
+          const sm = await this._scopeMismatch(url);
+          if (sm) return fail('scope', this._scopeMessage(sm), {recordClass: this._item.cls, status: res.status, lastError: msg, recordUnchanged: true, ...sm});
+        }
         const kind = res.status === 401 || res.status === 403 ? 'acl' : /abort|business rule/i.test(msg) ? 'aborted' : 'failed';
         const title = {acl: i18n.getMessage('Your account is not permitted to change this item (access control). Nothing was changed.'), aborted: i18n.getMessage('A rule on the catalog item stopped the update. Nothing was changed.'), failed: i18n.getMessage('The platform did not accept the update. Nothing was changed.')}[kind];
         return fail(kind, title, {recordClass: this._item.cls, status: res.status, lastError: msg, recordUnchanged: true});
@@ -519,6 +547,10 @@ export default class CatTransform extends AIUXWidgetElement {
     } catch (e) {
       const x = explain(e);
       const denied = x.status === 401 || x.status === 403;
+      if (denied && step !== 'verify') {
+        const sm = await this._scopeMismatch(url);
+        if (sm) return fail('scope', this._scopeMessage(sm), {recordClass: this._item?.cls, status: x.status, lastError: `${x.step}: ${x.msg}`, recordUnchanged: true, ...sm});
+      }
       const msg = step === 'verify'
         ? i18n.getMessage('The update may have been saved, but reading it back failed, so it is not reported as applied. Check the record.')
         : denied
@@ -569,6 +601,7 @@ export default class CatTransform extends AIUXWidgetElement {
     return ({
       stale: i18n.getMessage('The record changed: nothing applied'),
       privilege: i18n.getMessage('Blocked by a cross-scope privilege'),
+      scope: i18n.getMessage('Wrong application context'),
       acl: i18n.getMessage('Blocked by access control'),
       aborted: i18n.getMessage('Stopped by a rule on the item'),
       failed: i18n.getMessage('The update did not succeed'),
