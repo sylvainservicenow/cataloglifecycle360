@@ -231,7 +231,8 @@ export default class CatInspector extends AIUXElement {
     if (!n) return nothing;
     const types = TYPE();
     const fmtDate = s => (s ? new Intl.DateTimeFormat(undefined, {dateStyle: 'medium'}).format(new Date(String(s).replace(' ', 'T') + 'Z')) : '');
-    const groups = this.findings?.length ? this.findings : [{title: i18n.getMessage('Metadata completeness'), items: CRITERIA.map(c => ({state: n.flags[c.key] ? 'pass' : 'fail', text: c.label()}))}];
+    // the same sections in the same order on every page; the investigation adds its own section after them
+    const groups = [{title: i18n.getMessage('Metadata completeness'), items: CRITERIA.map(c => ({state: n.flags[c.key] ? 'pass' : 'fail', text: c.label()}))}, ...(this.findings || [])];
     return html`<aside aria-label=${i18n.getMessage('Selected item details')}>
       <button class="close" aria-label=${i18n.getMessage('Close the item details')} @click=${this._close}>✕</button>
       <h2>${n.name}</h2>

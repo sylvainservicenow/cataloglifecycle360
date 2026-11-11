@@ -408,6 +408,8 @@ export default class CatTransform extends AIUXWidgetElement {
     this._item = r.item;
     this._gapsBefore = FIELDS.flatMap(f => this._fieldGaps(f)).map(g => g.check.id);
     this._pick = Object.fromEntries(FIELDS.map(f => [f.key, this._fieldGaps(f).length > 0]));
+    // no gap is needed to ask for wording: with none found, offer both fields (the person can untick)
+    if (!Object.values(this._pick).some(Boolean)) this._pick = Object.fromEntries(FIELDS.map(f => [f.key, true]));
     this._phase = 'ready';
   }
 

@@ -7,10 +7,10 @@ import {keyed} from 'lit/directives/keyed.js';
 import {applyPersisted, classLabel, clearItemVariables, loadCatalog, loadItemVariables, loadTextFacts, loadVariableStats} from '../../lib/catalog-data.js';
 import {classBreakdown, distribution, nodeIndex, scopedIds} from '../../lib/discovery.js';
 import {assessVariables, buildAiReadiness, DIMENSIONS, failedCount} from '../../lib/investigations/ai-readiness.js';
-import {buildFormIntelligence, loadAllVariables, loadChoices, patchVariables} from '../../lib/investigations/form-intelligence.js';
+import {buildFormIntelligence, isInput, loadAllVariables, loadChoices, patchVariables} from '../../lib/investigations/form-intelligence.js';
 import {buildOverlap, KIND as OVERLAP_KIND} from '../../lib/investigations/overlap.js';
 import {buildTaxonomy, categoryCandidates, ISSUE as TAXONOMY_ISSUE} from '../../lib/investigations/taxonomy.js';
-import {buildCsdm, loadServiceData, offeringCandidates, resetServiceData} from '../../lib/investigations/csdm.js';
+import {buildCsdm, loadServiceData, offeringCandidates, offeringFallback, resetServiceData} from '../../lib/investigations/csdm.js';
 import {OTTO_TOOLS, ottoContext} from '../../lib/otto.js';
 import {setAppState} from '../../lib/app-state.js';
 import '../../components/cat-universe.js';
@@ -1434,11 +1434,18 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     if (mode === 'form') {
       const entry = this._disc.form?.byItem.get(id);
       const setUsage = this._disc.form?.setUsage;
-      const flagged = (entry?.findings || []).slice(0, 12);
-      if (!flagged.length) throw new Error('This item has no flagged questions, so there is nothing to improve on its form.');
-      const choiceTypes = flagged.filter(f => ['3', '5'].includes(f.variable.type)).map(f => f.variable.id);
+      const flagged = (entry?.findings || []).slice(0, 12).map(f => ({v: f.variable, issues: f.issues.map(i => i.text), shared: f.shared ? setUsage?.get(f.variable.set) || f.shared : 0}));
+      // no flagged question is needed: any form with inputs can be reviewed, flagged questions first
+      let rows = flagged;
+      if (rows.length < 12) {
+        const have = new Set(rows.map(r => r.v.id));
+        const all = (await loadItemVariables(id).catch(() => [])).filter(isInput).filter(v => !have.has(v.id));
+        rows = [...rows, ...all.slice(0, 12 - rows.length).map(v => ({v, issues: [], shared: 0, fromSet: !!v.fromSet}))];
+      }
+      if (!rows.length) throw new Error('This item has no input questions, so there is no form to improve.');
+      const choiceTypes = rows.filter(r => ['3', '5'].includes(String(r.v.type))).map(r => r.v.id);
       const choices = choiceTypes.length ? await loadChoices(choiceTypes).catch(() => new Map()) : new Map();
-      return {item: await base(n), variables: flagged.map(f => ({id: f.variable.id, type: f.variable.type, mandatory: f.variable.mandatory, name: f.variable.name, label: f.variable.label, help: f.variable.help, hint: f.variable.hint, issues: f.issues.map(i => i.text), choices: (choices.get(f.variable.id) || []).map(c => c.text), shared: f.shared ? setUsage?.get(f.variable.set) || f.shared : 0}))};
+      return {item: await base(n), variables: rows.map(r => ({id: r.v.id, type: String(r.v.type), mandatory: r.v.mandatory, name: r.v.name, label: r.v.label, help: r.v.help, hint: r.v.hint, issues: r.issues, choices: (choices.get(r.v.id) || []).map(c => c.text), shared: r.shared, fromSet: !!r.fromSet}))};
     }
     if (mode === 'overlap') {
       const g = this._disc.overlap.groupOf.get(id);
@@ -1455,7 +1462,8 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     // verified offerings are always shown to the model so it can say they already match
     const existing = (data.byItem.get(id) || []).map(l => l.offering);
     existing.forEach(o => !cands.some(c => c.id === o) && data.offeringById.get(o) && cands.push({id: o, name: data.offeringById.get(o).name, desc: data.offeringById.get(o).desc}));
-    if (!cands.length) throw new Error('No offering shares enough words with this item to be a candidate. That is normal: not every item belongs to an offering.');
+    if (!cands.length) offeringFallback(this._model, data, id).forEach(o => cands.push({id: o.id, name: o.name, desc: o.desc}));
+    if (!cands.length) throw new Error('No service offering shares any meaningful word with this item, so there is nothing to compare it with. That is normal: not every item belongs to an offering.');
     return {item: await base(n), candidates: cands, existing};
   }
 
@@ -1546,18 +1554,19 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
     const n = this._item ? nodeIndex(this._model).get(this._item) : null;
     const label = d.recommendedAction.label;
     const need = i18n.getMessage('Select an item first: choose one from the list above or click a dot in the universe.');
+    // Three separate questions: is the item flagged (a finding), can it be analysed (this), and may a change be saved (decided in the workspace).
+    // Here only the second one matters: any selected item can be analysed, flagged or not.
     if (d.id === 'overlap') {
+      // comparing needs at least two items, so the target is the selected item's candidate group
       const g = n ? this._disc.overlap?.groupOf.get(n.id) : null;
       return g
         ? {label: i18n.getMessage('Compare these {0} items', fmt(g.ids.length)), hint: i18n.getMessage('Compares “{0}” with {1} similar item(s) using the AI. Nothing is changed.', n.name, fmt(g.ids.length - 1))}
-        : {label, disabled: true, hint: n ? i18n.getMessage('“{0}” is not in a candidate group. Choose a group from the list above.', n.name) : i18n.getMessage('Choose a candidate group from the list above, or click a coloured dot in the universe.')};
+        : {label, disabled: true, hint: n ? i18n.getMessage('“{0}” is not in a candidate group, so there is nothing to compare it with. Choose a group from the list above.', n.name) : i18n.getMessage('Choose a candidate group from the list above, or click a coloured dot in the universe.')};
     }
     if (!n) return {label, disabled: true, hint: need};
     if (d.id === 'form-intelligence') {
       const e = this._disc.form?.byItem.get(n.id);
-      return e?.findings.length
-        ? {label, hint: i18n.getMessage('Target: “{0}”, {1} question(s) to review.', n.name, fmt(e.findings.length))}
-        : {label, disabled: true, hint: i18n.getMessage('“{0}” has no flagged questions. Choose an item from the list above.', n.name)};
+      return {label, hint: e?.findings.length ? i18n.getMessage('Target: “{0}”, {1} question(s) to review.', n.name, fmt(e.findings.length)) : i18n.getMessage('Target: “{0}”. No question was flagged; the AI can still suggest clearer wording for its questions.', n.name)};
     }
     return {label, hint: i18n.getMessage('Target: “{0}”.', n.name)};
   }
@@ -1645,7 +1654,7 @@ export default class InvestigatePage extends withWidgetContext(AIUXElement) {
       ${this._renderDrawer()}
       </div>
       <div class="focus-foot">
-        <button class="primary" ?disabled=${primary.disabled || !scope.length} @click=${this._openPrepare}>${primary.label}</button>
+        <button class="primary" ?disabled=${primary.disabled} @click=${this._openPrepare}>${primary.label}</button>
         <p class="hint">${primary.hint}</p>
         <button class="link" aria-expanded=${this._drawer} @click=${() => (this._drawer = !this._drawer)}>${this._drawer ? i18n.getMessage('Hide the reasoning') : i18n.getMessage('Why this finding?')}</button>
       </div>`;

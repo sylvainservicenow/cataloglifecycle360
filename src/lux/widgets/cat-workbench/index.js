@@ -451,7 +451,7 @@ export default class CatWorkbench extends AIUXWidgetElement {
       <h2>${c.item?.name || c.title}</h2>
       <p>${intro}</p>
       <p class="muted"><span class="badge ai">${i18n.getMessage('AI step')}</span> ${count} ${unit}. ${i18n.getMessage('One model call. Nothing is saved until you approve.')}</p>
-      ${this.mode === 'form' && c.variables.some(v => v.shared > 1) ? html`<div class="note">${i18n.getMessage('Some of these questions belong to a shared variable set. Changing one changes it on every item that uses the set.')}</div>` : nothing}
+      ${this.mode === 'form' && c.variables.some(v => v.shared > 1 || v.fromSet) ? html`<div class="note">${i18n.getMessage('Some of these questions belong to a shared variable set. Changing one changes it on every item that uses the set.')}</div>` : nothing}
       <div class="actions"><button class="ai" @click=${this._generate}>${{form: i18n.getMessage('Generate better wording'), overlap: i18n.getMessage('Compare with AI'), category: i18n.getMessage('Recommend a category'), service: i18n.getMessage('Check service alignment')}[this.mode]}</button></div>`;
   }
 
@@ -485,7 +485,7 @@ export default class CatWorkbench extends AIUXWidgetElement {
         return html`<div class="row ${off ? 'off' : ''}">
           ${this.mode === 'form' ? html`
             <div class="actions" style="margin:0 0 6px"><b>${row.variable.label || row.variable.name}</b> <span class="badge">${row.field === 'label' ? i18n.getMessage('Question label') : i18n.getMessage('Help text')}</span>
-              ${row.variable.shared > 1 ? html`<span class="badge">${i18n.getMessage('Shared by {0} items', String(row.variable.shared))}</span>` : nothing}</div>
+              ${row.variable.shared > 1 ? html`<span class="badge">${i18n.getMessage('Shared by {0} items', String(row.variable.shared))}</span>` : row.variable.fromSet ? html`<span class="badge">${i18n.getMessage('From a shared variable set')}</span>` : nothing}</div>
             <div class="cols"><div class="col"><b>${i18n.getMessage('Current value')}</b><span class="val">${row.current || i18n.getMessage('Not provided')}</span></div>
               <div class="col"><b>${i18n.getMessage('AI-proposed value · editable')}</b>
                 <textarea aria-label=${i18n.getMessage('Proposed {0}', row.field)} .value=${this._edit[row.key] ?? ''} ?disabled=${off} @input=${e => { this._edit = {...this._edit, [row.key]: e.target.value}; this._confirm = false; }}></textarea></div></div>

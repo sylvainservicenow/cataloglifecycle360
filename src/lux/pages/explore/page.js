@@ -4,7 +4,7 @@ import {AIUXElement, withWidgetContext} from '@servicenow/aiux/aiux-components-c
 import {navigate} from '@servicenow/aiux/aiux-client';
 import {i18n} from '@servicenow/aiux/aiux-services';
 import {OTTO_TOOLS, ottoContext, investigateUrl, INVESTIGATION_OF} from '../../lib/otto.js';
-import {loadCatalog, CRITERIA} from '../../lib/catalog-data.js';
+import {loadCatalog} from '../../lib/catalog-data.js';
 import {setAppState} from '../../lib/app-state.js';
 import '../../components/cat-universe.js';
 import '../../components/cat-appnav.js';
@@ -191,11 +191,6 @@ export default class ExplorePage extends withWidgetContext(AIUXElement) {
     navigate(url);
   }
 
-  /** The same checks the node already carries, shown the same way as in Investigate. */
-  _findings(n) {
-    return [{title: i18n.getMessage('Metadata completeness'), items: CRITERIA.map(c => ({state: n.flags[c.key] ? 'pass' : 'fail', text: c.label()}))}];
-  }
-
   render() {
     const n = this._model && this._sel.itemId ? this._model.nodes.find(x => x.id === this._sel.itemId) : null;
     const show = !!n && !this._closed;
@@ -209,7 +204,7 @@ export default class ExplorePage extends withWidgetContext(AIUXElement) {
           ${Object.entries(INVESTIGATION_OF).map(([id, label]) => html`<button @click=${() => this._open(id)}>${label}</button>`)}
         </section>
         <cat-universe hide-detail @cat-universe:investigate=${this._investigate} @cat-universe:select=${this._onSelectOpen} @cat-universe:focus=${this._onFocus} @cat-universe:lens=${this._onLens}></cat-universe>
-        ${show ? html`<cat-inspector .model=${this._model} item-id=${n.id} .findings=${this._findings(n)} @cat-inspector:close=${() => (this._closed = true)}></cat-inspector>` : nothing}
+        ${show ? html`<cat-inspector .model=${this._model} item-id=${n.id} @cat-inspector:close=${() => (this._closed = true)}></cat-inspector>` : nothing}
       </div>
     `;
   }

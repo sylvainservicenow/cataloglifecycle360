@@ -62,6 +62,23 @@ export function offeringCandidates(model, data, itemId, limit = 12) {
   return out.sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
+/**
+ * When no offering name is anchored in the item's name, offer the few offerings whose
+ * description shares the most words with it, so a requested check is still possible.
+ * The AI may (and often will) answer "no clear match".
+ */
+export function offeringFallback(model, data, itemId, limit = 6) {
+  const n = model.nodes.find(x => x.id === itemId);
+  if (!n) return [];
+  const mine = tokens(`${n.name} ${n.shortDescription}`);
+  return data.offerings
+    .map(o => ({o, shared: sharedCount(mine, o.tok)}))
+    .filter(x => x.shared > 0)
+    .sort((a, b) => b.shared - a.shared)
+    .slice(0, limit)
+    .map(x => x.o);
+}
+
 export function buildCsdm(model, data) {
   const active = model.nodes.filter(n => n.active);
   const verified = active.filter(n => data.byItem.has(n.id));
