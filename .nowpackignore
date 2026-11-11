@@ -1,0 +1,9 @@
+# Files excluded from the source artifact bundled into the app's deployed
+# metadata. Honored like a .gitignore, relative to the project root.
+
+# Agent skill packs. The `postinstall` script copies these in from
+# node_modules and symlinks .claude/skills into .agents, so they are
+# reproducible from package.json and are not app source. Left in, they
+# dominate the artifact: ~2.8 MB across ~270 files on a real app.
+.agents/
+.claude/skills/

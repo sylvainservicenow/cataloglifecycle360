@@ -1,0 +1,14 @@
+{
+  "name": "CatalogIntelligence360",
+  "projectId": "x_snc_catalogintel_catalogintelligence360",
+  "basename": "catalogintelligence360",
+  "srcDir": "src/lux",
+  "landing": "/home",
+  "createAnalyticsApp": true,
+  "development": {
+    "token": ""
+  },
+  "build": {
+    "exclude": ["**/*.test.js", "**/test/**"]
+  }
+}

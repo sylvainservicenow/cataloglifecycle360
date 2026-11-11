@@ -1,0 +1,15 @@
+{
+  "scope": "x_snc_catalogintel",
+  "scopeId": "1737bdb37e514beabc259abd93b68f65",
+  "name": "CatalogIntelligence360",
+  "metadataDir": "src/plugin-xmls",
+  "appOutputDir": "dist-metadata/app",
+  "packageSourceCodeOnInstance": true,
+  "staticContent": {
+    "assets": {
+      "./public/**": {
+        "publicPath": "[$config.aiux.basename]/public"
+      }
+    }
+  }
+}

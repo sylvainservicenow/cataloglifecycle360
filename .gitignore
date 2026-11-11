@@ -1,0 +1,14 @@
+.DS_Store
+.now/
+dist/
+node_modules/
+target/
+*.tsbuildinfo
+.jest_cache
+dist-metadata/
+.aiux-runtime/
+.agents/cache/
+.env
+*.local
+pages/.widget-sandbox/
+pages/.widget-sandbox-bare/

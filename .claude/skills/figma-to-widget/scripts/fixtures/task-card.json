@@ -1,0 +1,725 @@
+{
+  "nodes": {
+    "1:1": {
+      "document": {
+        "id": "1:1",
+        "name": "Task Card",
+        "type": "FRAME",
+        "visible": true,
+        "layoutMode": "VERTICAL",
+        "primaryAxisAlignItems": "MIN",
+        "counterAxisAlignItems": "STRETCH",
+        "itemSpacing": 16,
+        "paddingTop": 24,
+        "paddingRight": 24,
+        "paddingBottom": 24,
+        "paddingLeft": 24,
+        "cornerRadius": 24,
+        "absoluteBoundingBox": {"x": 0, "y": 0, "width": 360, "height": 420},
+        "fills": [
+          {
+            "type": "SOLID",
+            "visible": true,
+            "color": {"r": 1, "g": 1, "b": 1, "a": 1}
+          }
+        ],
+        "strokes": [],
+        "effects": [
+          {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {"r": 0, "g": 0, "b": 0, "a": 0.08},
+            "offset": {"x": 0, "y": 4},
+            "radius": 8,
+            "spread": 0
+          }
+        ],
+        "children": [
+          {
+            "id": "1:2",
+            "name": "Widget Title",
+            "type": "TEXT",
+            "visible": true,
+            "absoluteBoundingBox": {
+              "x": 24,
+              "y": 24,
+              "width": 312,
+              "height": 20
+            },
+            "fills": [
+              {
+                "type": "SOLID",
+                "visible": true,
+                "color": {"r": 0.431, "g": 0.478, "b": 0.514, "a": 1}
+              }
+            ],
+            "strokes": [],
+            "effects": [],
+            "style": {
+              "fontSize": 14,
+              "fontWeight": 500,
+              "fontFamily": "Inter",
+              "lineHeightPx": 20,
+              "textAlignHorizontal": "LEFT"
+            },
+            "characters": "Tasks Needing Attention"
+          },
+          {
+            "id": "1:3",
+            "name": "Item List",
+            "type": "FRAME",
+            "visible": true,
+            "layoutMode": "VERTICAL",
+            "primaryAxisAlignItems": "MIN",
+            "counterAxisAlignItems": "STRETCH",
+            "itemSpacing": 12,
+            "absoluteBoundingBox": {
+              "x": 24,
+              "y": 60,
+              "width": 312,
+              "height": 332
+            },
+            "fills": [],
+            "strokes": [],
+            "effects": [],
+            "children": [
+              {
+                "id": "1:4",
+                "name": "Task Row",
+                "type": "FRAME",
+                "visible": true,
+                "layoutMode": "HORIZONTAL",
+                "primaryAxisAlignItems": "MIN",
+                "counterAxisAlignItems": "CENTER",
+                "itemSpacing": 12,
+                "paddingTop": 16,
+                "paddingRight": 16,
+                "paddingBottom": 16,
+                "paddingLeft": 16,
+                "cornerRadius": 12,
+                "absoluteBoundingBox": {
+                  "x": 24,
+                  "y": 60,
+                  "width": 312,
+                  "height": 72
+                },
+                "fills": [
+                  {
+                    "type": "SOLID",
+                    "visible": true,
+                    "color": {"r": 0.976, "g": 0.98, "b": 0.984, "a": 1}
+                  }
+                ],
+                "strokes": [
+                  {
+                    "type": "SOLID",
+                    "visible": true,
+                    "color": {"r": 0.898, "g": 0.914, "b": 0.922, "a": 1}
+                  }
+                ],
+                "strokeWeight": 1,
+                "effects": [],
+                "children": [
+                  {
+                    "id": "1:5",
+                    "name": "Icon/tasks",
+                    "type": "INSTANCE",
+                    "visible": true,
+                    "absoluteBoundingBox": {
+                      "x": 40,
+                      "y": 76,
+                      "width": 24,
+                      "height": 24
+                    },
+                    "fills": [],
+                    "strokes": [],
+                    "effects": [],
+                    "children": []
+                  },
+                  {
+                    "id": "1:6",
+                    "name": "Task Details",
+                    "type": "FRAME",
+                    "visible": true,
+                    "layoutMode": "VERTICAL",
+                    "primaryAxisAlignItems": "MIN",
+                    "counterAxisAlignItems": "STRETCH",
+                    "itemSpacing": 4,
+                    "layoutGrow": 1,
+                    "absoluteBoundingBox": {
+                      "x": 76,
+                      "y": 64,
+                      "width": 220,
+                      "height": 44
+                    },
+                    "fills": [],
+                    "strokes": [],
+                    "effects": [],
+                    "children": [
+                      {
+                        "id": "1:7",
+                        "name": "Task Title",
+                        "type": "TEXT",
+                        "visible": true,
+                        "absoluteBoundingBox": {
+                          "x": 76,
+                          "y": 64,
+                          "width": 220,
+                          "height": 20
+                        },
+                        "fills": [
+                          {
+                            "type": "SOLID",
+                            "visible": true,
+                            "color": {
+                              "r": 0.122,
+                              "g": 0.161,
+                              "b": 0.216,
+                              "a": 1
+                            }
+                          }
+                        ],
+                        "strokes": [],
+                        "effects": [],
+                        "style": {
+                          "fontSize": 14,
+                          "fontWeight": 500,
+                          "fontFamily": "Inter",
+                          "lineHeightPx": 20,
+                          "textAlignHorizontal": "LEFT"
+                        },
+                        "characters": "Review incident INC0012345"
+                      },
+                      {
+                        "id": "1:8",
+                        "name": "Task Subtitle",
+                        "type": "TEXT",
+                        "visible": true,
+                        "absoluteBoundingBox": {
+                          "x": 76,
+                          "y": 88,
+                          "width": 220,
+                          "height": 16
+                        },
+                        "fills": [
+                          {
+                            "type": "SOLID",
+                            "visible": true,
+                            "color": {
+                              "r": 0.431,
+                              "g": 0.478,
+                              "b": 0.514,
+                              "a": 1
+                            }
+                          }
+                        ],
+                        "strokes": [],
+                        "effects": [],
+                        "style": {
+                          "fontSize": 12,
+                          "fontWeight": 400,
+                          "fontFamily": "Inter",
+                          "lineHeightPx": 16,
+                          "textAlignHorizontal": "LEFT"
+                        },
+                        "characters": "Overdue · 2 days"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "1:9",
+                    "name": "badge Priority",
+                    "type": "FRAME",
+                    "visible": true,
+                    "layoutMode": "HORIZONTAL",
+                    "primaryAxisAlignItems": "CENTER",
+                    "counterAxisAlignItems": "CENTER",
+                    "itemSpacing": 0,
+                    "paddingTop": 4,
+                    "paddingRight": 8,
+                    "paddingBottom": 4,
+                    "paddingLeft": 8,
+                    "cornerRadius": 999,
+                    "absoluteBoundingBox": {
+                      "x": 300,
+                      "y": 76,
+                      "width": 28,
+                      "height": 20
+                    },
+                    "fills": [
+                      {
+                        "type": "SOLID",
+                        "visible": true,
+                        "color": {"r": 1, "g": 0.949, "b": 0.949, "a": 1}
+                      }
+                    ],
+                    "strokes": [],
+                    "effects": [],
+                    "children": [
+                      {
+                        "id": "1:10",
+                        "name": "Badge Label",
+                        "type": "TEXT",
+                        "visible": true,
+                        "absoluteBoundingBox": {
+                          "x": 308,
+                          "y": 78,
+                          "width": 12,
+                          "height": 16
+                        },
+                        "fills": [
+                          {
+                            "type": "SOLID",
+                            "visible": true,
+                            "color": {
+                              "r": 0.918,
+                              "g": 0.286,
+                              "b": 0.286,
+                              "a": 1
+                            }
+                          }
+                        ],
+                        "strokes": [],
+                        "effects": [],
+                        "style": {
+                          "fontSize": 12,
+                          "fontWeight": 600,
+                          "fontFamily": "Inter",
+                          "lineHeightPx": 16,
+                          "textAlignHorizontal": "CENTER"
+                        },
+                        "characters": "P2"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "1:11",
+                "name": "Task Row",
+                "type": "FRAME",
+                "visible": true,
+                "layoutMode": "HORIZONTAL",
+                "primaryAxisAlignItems": "MIN",
+                "counterAxisAlignItems": "CENTER",
+                "itemSpacing": 12,
+                "paddingTop": 16,
+                "paddingRight": 16,
+                "paddingBottom": 16,
+                "paddingLeft": 16,
+                "cornerRadius": 12,
+                "absoluteBoundingBox": {
+                  "x": 24,
+                  "y": 144,
+                  "width": 312,
+                  "height": 72
+                },
+                "fills": [
+                  {
+                    "type": "SOLID",
+                    "visible": true,
+                    "color": {"r": 0.976, "g": 0.98, "b": 0.984, "a": 1}
+                  }
+                ],
+                "strokes": [
+                  {
+                    "type": "SOLID",
+                    "visible": true,
+                    "color": {"r": 0.898, "g": 0.914, "b": 0.922, "a": 1}
+                  }
+                ],
+                "strokeWeight": 1,
+                "effects": [],
+                "children": [
+                  {
+                    "id": "1:12",
+                    "name": "Icon/tasks",
+                    "type": "INSTANCE",
+                    "visible": true,
+                    "absoluteBoundingBox": {
+                      "x": 40,
+                      "y": 160,
+                      "width": 24,
+                      "height": 24
+                    },
+                    "fills": [],
+                    "strokes": [],
+                    "effects": [],
+                    "children": []
+                  },
+                  {
+                    "id": "1:13",
+                    "name": "Task Details",
+                    "type": "FRAME",
+                    "visible": true,
+                    "layoutMode": "VERTICAL",
+                    "primaryAxisAlignItems": "MIN",
+                    "counterAxisAlignItems": "STRETCH",
+                    "itemSpacing": 4,
+                    "layoutGrow": 1,
+                    "absoluteBoundingBox": {
+                      "x": 76,
+                      "y": 148,
+                      "width": 220,
+                      "height": 44
+                    },
+                    "fills": [],
+                    "strokes": [],
+                    "effects": [],
+                    "children": [
+                      {
+                        "id": "1:14",
+                        "name": "Task Title",
+                        "type": "TEXT",
+                        "visible": true,
+                        "absoluteBoundingBox": {
+                          "x": 76,
+                          "y": 148,
+                          "width": 220,
+                          "height": 20
+                        },
+                        "fills": [
+                          {
+                            "type": "SOLID",
+                            "visible": true,
+                            "color": {
+                              "r": 0.122,
+                              "g": 0.161,
+                              "b": 0.216,
+                              "a": 1
+                            }
+                          }
+                        ],
+                        "strokes": [],
+                        "effects": [],
+                        "style": {
+                          "fontSize": 14,
+                          "fontWeight": 500,
+                          "fontFamily": "Inter",
+                          "lineHeightPx": 20,
+                          "textAlignHorizontal": "LEFT"
+                        },
+                        "characters": "Approve change CHG0001234"
+                      },
+                      {
+                        "id": "1:15",
+                        "name": "Task Subtitle",
+                        "type": "TEXT",
+                        "visible": true,
+                        "absoluteBoundingBox": {
+                          "x": 76,
+                          "y": 172,
+                          "width": 220,
+                          "height": 16
+                        },
+                        "fills": [
+                          {
+                            "type": "SOLID",
+                            "visible": true,
+                            "color": {
+                              "r": 0.431,
+                              "g": 0.478,
+                              "b": 0.514,
+                              "a": 1
+                            }
+                          }
+                        ],
+                        "strokes": [],
+                        "effects": [],
+                        "style": {
+                          "fontSize": 12,
+                          "fontWeight": 400,
+                          "fontFamily": "Inter",
+                          "lineHeightPx": 16,
+                          "textAlignHorizontal": "LEFT"
+                        },
+                        "characters": "Due today"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "1:16",
+                    "name": "badge Priority",
+                    "type": "FRAME",
+                    "visible": true,
+                    "layoutMode": "HORIZONTAL",
+                    "primaryAxisAlignItems": "CENTER",
+                    "counterAxisAlignItems": "CENTER",
+                    "itemSpacing": 0,
+                    "paddingTop": 4,
+                    "paddingRight": 8,
+                    "paddingBottom": 4,
+                    "paddingLeft": 8,
+                    "cornerRadius": 999,
+                    "absoluteBoundingBox": {
+                      "x": 300,
+                      "y": 160,
+                      "width": 28,
+                      "height": 20
+                    },
+                    "fills": [
+                      {
+                        "type": "SOLID",
+                        "visible": true,
+                        "color": {"r": 1, "g": 0.949, "b": 0.949, "a": 1}
+                      }
+                    ],
+                    "strokes": [],
+                    "effects": [],
+                    "children": [
+                      {
+                        "id": "1:17",
+                        "name": "Badge Label",
+                        "type": "TEXT",
+                        "visible": true,
+                        "absoluteBoundingBox": {
+                          "x": 308,
+                          "y": 162,
+                          "width": 12,
+                          "height": 16
+                        },
+                        "fills": [
+                          {
+                            "type": "SOLID",
+                            "visible": true,
+                            "color": {
+                              "r": 0.918,
+                              "g": 0.286,
+                              "b": 0.286,
+                              "a": 1
+                            }
+                          }
+                        ],
+                        "strokes": [],
+                        "effects": [],
+                        "style": {
+                          "fontSize": 12,
+                          "fontWeight": 600,
+                          "fontFamily": "Inter",
+                          "lineHeightPx": 16,
+                          "textAlignHorizontal": "CENTER"
+                        },
+                        "characters": "P1"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "1:18",
+                "name": "Task Row",
+                "type": "FRAME",
+                "visible": true,
+                "layoutMode": "HORIZONTAL",
+                "primaryAxisAlignItems": "MIN",
+                "counterAxisAlignItems": "CENTER",
+                "itemSpacing": 12,
+                "paddingTop": 16,
+                "paddingRight": 16,
+                "paddingBottom": 16,
+                "paddingLeft": 16,
+                "cornerRadius": 12,
+                "absoluteBoundingBox": {
+                  "x": 24,
+                  "y": 228,
+                  "width": 312,
+                  "height": 72
+                },
+                "fills": [
+                  {
+                    "type": "SOLID",
+                    "visible": true,
+                    "color": {"r": 0.976, "g": 0.98, "b": 0.984, "a": 1}
+                  }
+                ],
+                "strokes": [
+                  {
+                    "type": "SOLID",
+                    "visible": true,
+                    "color": {"r": 0.898, "g": 0.914, "b": 0.922, "a": 1}
+                  }
+                ],
+                "strokeWeight": 1,
+                "effects": [],
+                "children": [
+                  {
+                    "id": "1:19",
+                    "name": "Icon/assignment",
+                    "type": "INSTANCE",
+                    "visible": true,
+                    "absoluteBoundingBox": {
+                      "x": 40,
+                      "y": 244,
+                      "width": 24,
+                      "height": 24
+                    },
+                    "fills": [],
+                    "strokes": [],
+                    "effects": [],
+                    "children": []
+                  },
+                  {
+                    "id": "1:20",
+                    "name": "Task Details",
+                    "type": "FRAME",
+                    "visible": true,
+                    "layoutMode": "VERTICAL",
+                    "primaryAxisAlignItems": "MIN",
+                    "counterAxisAlignItems": "STRETCH",
+                    "itemSpacing": 4,
+                    "layoutGrow": 1,
+                    "absoluteBoundingBox": {
+                      "x": 76,
+                      "y": 232,
+                      "width": 220,
+                      "height": 44
+                    },
+                    "fills": [],
+                    "strokes": [],
+                    "effects": [],
+                    "children": [
+                      {
+                        "id": "1:21",
+                        "name": "Task Title",
+                        "type": "TEXT",
+                        "visible": true,
+                        "absoluteBoundingBox": {
+                          "x": 76,
+                          "y": 232,
+                          "width": 220,
+                          "height": 20
+                        },
+                        "fills": [
+                          {
+                            "type": "SOLID",
+                            "visible": true,
+                            "color": {
+                              "r": 0.122,
+                              "g": 0.161,
+                              "b": 0.216,
+                              "a": 1
+                            }
+                          }
+                        ],
+                        "strokes": [],
+                        "effects": [],
+                        "style": {
+                          "fontSize": 14,
+                          "fontWeight": 500,
+                          "fontFamily": "Inter",
+                          "lineHeightPx": 20,
+                          "textAlignHorizontal": "LEFT"
+                        },
+                        "characters": "Update RITM0089012 catalog item"
+                      },
+                      {
+                        "id": "1:22",
+                        "name": "Task Subtitle",
+                        "type": "TEXT",
+                        "visible": true,
+                        "absoluteBoundingBox": {
+                          "x": 76,
+                          "y": 256,
+                          "width": 220,
+                          "height": 16
+                        },
+                        "fills": [
+                          {
+                            "type": "SOLID",
+                            "visible": true,
+                            "color": {
+                              "r": 0.431,
+                              "g": 0.478,
+                              "b": 0.514,
+                              "a": 1
+                            }
+                          }
+                        ],
+                        "strokes": [],
+                        "effects": [],
+                        "style": {
+                          "fontSize": 12,
+                          "fontWeight": 400,
+                          "fontFamily": "Inter",
+                          "lineHeightPx": 16,
+                          "textAlignHorizontal": "LEFT"
+                        },
+                        "characters": "Assigned to you"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "1:23",
+                    "name": "badge Priority",
+                    "type": "FRAME",
+                    "visible": true,
+                    "layoutMode": "HORIZONTAL",
+                    "primaryAxisAlignItems": "CENTER",
+                    "counterAxisAlignItems": "CENTER",
+                    "itemSpacing": 0,
+                    "paddingTop": 4,
+                    "paddingRight": 8,
+                    "paddingBottom": 4,
+                    "paddingLeft": 8,
+                    "cornerRadius": 999,
+                    "absoluteBoundingBox": {
+                      "x": 300,
+                      "y": 244,
+                      "width": 28,
+                      "height": 20
+                    },
+                    "fills": [
+                      {
+                        "type": "SOLID",
+                        "visible": true,
+                        "color": {"r": 0.973, "g": 0.965, "b": 1, "a": 1}
+                      }
+                    ],
+                    "strokes": [],
+                    "effects": [],
+                    "children": [
+                      {
+                        "id": "1:24",
+                        "name": "Badge Label",
+                        "type": "TEXT",
+                        "visible": true,
+                        "absoluteBoundingBox": {
+                          "x": 308,
+                          "y": 246,
+                          "width": 12,
+                          "height": 16
+                        },
+                        "fills": [
+                          {
+                            "type": "SOLID",
+                            "visible": true,
+                            "color": {
+                              "r": 0.498,
+                              "g": 0.357,
+                              "b": 0.918,
+                              "a": 1
+                            }
+                          }
+                        ],
+                        "strokes": [],
+                        "effects": [],
+                        "style": {
+                          "fontSize": 12,
+                          "fontWeight": 600,
+                          "fontFamily": "Inter",
+                          "lineHeightPx": 16,
+                          "textAlignHorizontal": "CENTER"
+                        },
+                        "characters": "P3"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
