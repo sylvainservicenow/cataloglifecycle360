@@ -34,6 +34,8 @@ export default class CatTransform extends AIUXWidgetElement {
     _confirm: {state: true},
     _priv: {state: true},
     _error: {state: true},
+    _errKind: {state: true},
+    _errDetail: {state: true},
     _stale: {state: true},
     _result: {state: true},
     _gapsBefore: {state: true}
@@ -380,6 +382,8 @@ export default class CatTransform extends AIUXWidgetElement {
     this._confirm = false;
     this._priv = null;
     this._error = '';
+    this._errKind = '';
+    this._errDetail = null;
     this._stale = false;
     this._result = null;
     this._gapsBefore = null;
@@ -415,6 +419,8 @@ export default class CatTransform extends AIUXWidgetElement {
       const r = await this.server.get(input);
       if (r?.isError) {
         this._error = r.errorMessage || i18n.getMessage('The request failed.');
+        this._errKind = r.errorKind || 'failed';
+        this._errDetail = r.detail || null;
         this._stale = !!r.stale;
         this._phase = 'error';
         return null;
@@ -483,7 +489,9 @@ export default class CatTransform extends AIUXWidgetElement {
       case 'reading':
         return html`<p role="status"><span class="spin"></span>${i18n.getMessage('Reading the current record…')}</p>`;
       case 'error':
-        return html`<div class="note bad" role="alert">${this._error}</div>
+        return html`<div class="note bad" role="alert"><b>${this._kindTitle()}</b><br>${this._error}
+          ${this._errKind === 'privilege' ? html`<ul><li>${i18n.getMessage('Needed: Write on table sc_cat_item and Execute API GlideRecord.setValue / GlideRecord.update for x_snc_catalogintel.')}</li><li>${i18n.getMessage('An administrator must allow any that are missing; this app never grants them.')}</li></ul>` : nothing}
+          ${this._errDetail ? html`<details><summary>${i18n.getMessage('Technical detail')}</summary><p class="muted">${i18n.getMessage('Record class')}: ${this._errDetail.recordClass} · ${i18n.getMessage('record unchanged')}: ${String(this._errDetail.recordUnchanged)}${this._errDetail.lastError ? ' · ' + this._errDetail.lastError : ''}${this._errDetail.threw ? ' · ' + this._errDetail.threw : ''}${this._errDetail.actionAborted ? ' · ' + i18n.getMessage('aborted by a rule') : ''}</p></details>` : nothing}</div>
           <div class="actions">${this._stale ? html`<button class="ghost" @click=${() => this._open()}>${i18n.getMessage('Reload current values')}</button>` : html`<button class="ghost" @click=${() => this._open()}>${i18n.getMessage('Start again')}</button>`}</div>`;
       case 'ready':
         return this._renderReady();
@@ -496,6 +504,18 @@ export default class CatTransform extends AIUXWidgetElement {
       default:
         return this._renderDone();
     }
+  }
+
+  _kindTitle() {
+    return ({
+      stale: i18n.getMessage('The record changed: nothing applied'),
+      privilege: i18n.getMessage('Blocked by a cross-scope privilege'),
+      acl: i18n.getMessage('Blocked by access control'),
+      aborted: i18n.getMessage('Stopped by a rule on the item'),
+      failed: i18n.getMessage('The update did not succeed'),
+      input: i18n.getMessage('Nothing to do'),
+      ai: i18n.getMessage('The AI step failed')
+    })[this._errKind] || i18n.getMessage('The request failed');
   }
 
   _renderReady() {

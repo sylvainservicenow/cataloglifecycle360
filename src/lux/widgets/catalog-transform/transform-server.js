@@ -19,10 +19,12 @@ export default function server(data, _options, input) {
   var action = (input && input.action) || 'read';
   var itemId = input && input.itemId;
 
-  function fail(msg, extra) {
+  // kind: stale | privilege | acl | aborted | failed | input | ai
+  function fail(msg, kind, detail) {
     data.isError = true;
     data.errorMessage = msg;
-    if (extra) data.detail = extra;
+    data.errorKind = kind || 'failed';
+    if (detail) data.detail = detail;
   }
   function strip(s) {
     return String(s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -53,7 +55,7 @@ export default function server(data, _options, input) {
     var want = (input.fields || []).filter(function (f) {
       return f === 'shortDescription' || f === 'description';
     });
-    if (!want.length) return fail('Choose at least one field to improve.');
+    if (!want.length) return fail('Choose at least one field to improve.', 'input');
 
     var labels = [];
     var vars = new GlideRecordSecure('item_option_new');
@@ -143,7 +145,7 @@ export default function server(data, _options, input) {
     if (stale) {
       data.stale = true;
       data.current = {short: item.short, description: item.description, updated: item.updated};
-      return fail('The item changed after these proposals were generated. Nothing was applied. Generate again to review against the current values.');
+      return fail('The item changed after these proposals were generated. Nothing was applied. Generate again to review against the current values.', 'stale');
     }
     for (var k = 0; k < keys.length; k++) {
       var v = String(changes[keys[k]] || '').trim();
@@ -155,8 +157,48 @@ export default function server(data, _options, input) {
     for (var j = 0; j < keys.length; j++) {
       gr.setValue(keys[j] === 'shortDescription' ? 'short_description' : 'description', String(changes[keys[j]]).trim());
     }
-    var saved = gr.update();
-    if (!saved) return fail('The update was not accepted. You may lack permission to change this item. Nothing was reported as applied.');
+    var saved = null;
+    var thrown = '';
+    try {
+      saved = gr.update();
+    } catch (e) {
+      thrown = String((e && e.message) || e);
+    }
+    if (!saved) {
+      var lastError = '';
+      var aborted = false;
+      try {
+        lastError = String(gr.getLastErrorMessage() || '');
+      } catch (e2) {
+        lastError = '';
+      }
+      try {
+        aborted = gr.isActionAborted() === true;
+      } catch (e3) {
+        aborted = false;
+      }
+      var errText = (thrown + ' ' + lastError).toLowerCase();
+      var kind = 'failed';
+      if (/cross.?scope|privilege|restricted caller|not allowed to (write|update)|application access|scope/.test(errText)) kind = 'privilege';
+      else if (/acl|security|permission|denied|not authorized|insufficient/.test(errText)) kind = 'acl';
+      else if (aborted) kind = 'aborted';
+      var unchanged = true;
+      var reread = readItem(itemId);
+      if (reread) unchanged = reread.short === item.short && reread.description === item.description && reread.updated === item.updated;
+      var messages = {
+        privilege: 'The update was blocked by a cross-scope privilege. Nothing was changed.',
+        acl: 'Your account is not permitted to change this field (access control). Nothing was changed.',
+        aborted: 'A rule on the catalog item stopped the update. Nothing was changed.',
+        failed: 'The platform did not accept the update. Nothing was changed.'
+      };
+      return fail(messages[kind] + (unchanged ? '' : ' WARNING: the record changed; review it.'), kind, {
+        recordClass: item.cls,
+        threw: thrown,
+        lastError: lastError,
+        actionAborted: aborted,
+        recordUnchanged: unchanged
+      });
+    }
     // Verify from the database, not from what we sent.
     var after = readItem(itemId);
     if (!after) return fail('The item could not be re-read after the update.');
