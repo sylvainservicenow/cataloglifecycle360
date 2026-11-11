@@ -18,14 +18,20 @@ async function getJson(url) {
   const r = await aiuxFetch(url, {headers: {Accept: 'application/json'}});
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const rows = (await r.json())?.result ?? [];
-  return {rows, total: Number(r.headers?.get?.('X-Total-Count')) || rows.length};
+  const header = Number(r.headers?.get?.('X-Total-Count'));
+  return {rows, total: Number.isFinite(header) && header > 0 ? header : rows.length};
 }
 
-/** Fetch every row of a table (paged). A denied table resolves to {rows: [], error}. */
+/**
+ * Fetch every row of a table (paged). ACLs can make a page shorter than the
+ * limit, so paging follows the server's total count, never the page length.
+ */
 async function fetchAll(table, query, fields) {
   const rows = [];
   try {
-    for (let offset = 0; offset < 20000; offset += PAGE) {
+    let offset = 0;
+    let total = Infinity;
+    while (offset < total && offset < 50000) {
       const p = new URLSearchParams({
         sysparm_query: `${query}^ORDERBYsys_id`,
         sysparm_fields: fields,
@@ -35,7 +41,9 @@ async function fetchAll(table, query, fields) {
       });
       const page = await getJson(`/api/now/table/${table}?${p}`);
       rows.push(...page.rows);
-      if (page.rows.length < PAGE) break;
+      total = page.total;
+      if (!page.rows.length) break;
+      offset += PAGE;
     }
     return {rows, error: null};
   } catch (e) {
@@ -74,16 +82,18 @@ export function loadCatalog(force = false) {
 }
 
 async function build() {
-  const [items, cats, links, ritms, offerings] = await Promise.all([
+  const [items, cats, links, ritms, offerings, catalogRows] = await Promise.all([
     fetchAll('sc_cat_item', 'sys_idISNOTEMPTY', 'sys_id,name,sys_class_name,active,category,short_description,description,icon,picture,sys_created_on,sys_updated_on'),
-    fetchAll('sc_category', 'sys_idISNOTEMPTY', 'sys_id,title,parent,active'),
+    fetchAll('sc_category', 'sys_idISNOTEMPTY', 'sys_id,title,parent,active,sc_catalog'),
     fetchAll('sc_cat_item_category', 'sys_idISNOTEMPTY', 'sc_cat_item,sc_category'),
     fetchAll('sc_req_item', 'sys_idISNOTEMPTY', 'cat_item,sys_created_on'),
-    fetchAll('service_offering', 'sys_idISNOTEMPTY', 'sys_id,name,operational_status')
+    fetchAll('service_offering', 'sys_idISNOTEMPTY', 'sys_id,name,operational_status'),
+    fetchAll('sc_catalog', 'sys_idISNOTEMPTY', 'sys_id,title')
   ]);
   if (items.error) throw new Error(items.error);
 
-  const catById = new Map(cats.rows.map(c => [c.sys_id, {id: c.sys_id, title: c.title || '(untitled)', parent: val(c.parent), active: c.active === 'true'}]));
+  const catById = new Map(cats.rows.map(c => [c.sys_id, {id: c.sys_id, title: c.title || '(untitled)', parent: val(c.parent), catalog: val(c.sc_catalog), active: c.active === 'true'}]));
+  const catalogs = new Map(catalogRows.rows.map(c => [c.sys_id, c.title]));
   const linkByItem = new Map();
   for (const l of links.rows) {
     const i = val(l.sc_cat_item);
@@ -124,11 +134,22 @@ async function build() {
     };
   });
 
+  // Several categories share a title (e.g. "Compute"); qualify them by parent
+  // or catalog so every label is unambiguous. Titles are never altered otherwise.
+  const titleCount = new Map();
+  catById.forEach(c => titleCount.set(c.title, (titleCount.get(c.title) || 0) + 1));
+  const label = c => {
+    if (titleCount.get(c.title) < 2) return c.title;
+    const parent = catById.get(c.parent);
+    const cat = catalogs.get(c.catalog);
+    const ctx = parent ? parent.title : cat;
+    return ctx ? `${c.title} (${ctx})` : c.title;
+  };
   const clusters = new Map();
   for (const n of nodes) {
     if (!clusters.has(n.cluster)) {
       const c = catById.get(n.cluster);
-      clusters.set(n.cluster, {id: n.cluster, title: c ? c.title : 'Uncategorised', uncategorised: !c, items: []});
+      clusters.set(n.cluster, {id: n.cluster, title: c ? label(c) : i18n.getMessage('Not yet in a category'), uncategorised: !c, items: []});
     }
     clusters.get(n.cluster).items.push(n);
   }
@@ -139,7 +160,7 @@ async function build() {
 
   return {
     nodes,
-    catTitle: Object.fromEntries([...catById.values()].map(c => [c.id, c.title])),
+    catTitle: Object.fromEntries([...catById.values()].map(c => [c.id, label(c)])),
     clusters: [...clusters.values()].sort((a, b) => b.items.length - a.items.length),
     stats: {
       items: nodes.length,
@@ -162,41 +183,80 @@ async function build() {
 }
 
 /* ------------------------------------------------------------------ *
- * Circle packing (deterministic greedy spiral).
+ * Layout helpers
  * ------------------------------------------------------------------ */
-export function packCircles(circles, pad = 6) {
+
+/**
+ * Dense circle packing: each circle goes where it touches two placed circles
+ * and sits closest to the (slightly flattened) centre. Deterministic.
+ */
+export function packCircles(circles, pad = 6, aspect = 0.72) {
   const placed = [];
-  const sorted = [...circles].sort((a, b) => b.r - a.r);
-  for (const c of sorted) {
+  const score = (x, y) => Math.hypot(x * aspect, y);
+  for (const c of [...circles].sort((a, b) => b.r - a.r)) {
     if (!placed.length) {
       placed.push({...c, x: 0, y: 0});
       continue;
     }
-    let angle = 0;
-    let dist = 0;
-    for (let guard = 0; guard < 20000; guard++) {
-      const x = Math.cos(angle) * dist;
-      const y = Math.sin(angle) * dist * 0.82;
-      if (placed.every(p => Math.hypot(p.x - x, p.y - y) >= p.r + c.r + pad)) {
-        placed.push({...c, x, y});
-        break;
+    const fits = (x, y) => placed.every(p => Math.hypot(p.x - x, p.y - y) >= p.r + c.r + pad - 0.01);
+    let best = null;
+    let bestScore = Infinity;
+    const consider = (x, y) => {
+      const sc = score(x, y);
+      if (sc < bestScore && fits(x, y)) {
+        best = {x, y};
+        bestScore = sc;
       }
-      angle += 0.5;
-      dist += 0.9 * (0.5 / (2 * Math.PI)) * 18;
+    };
+    if (placed.length === 1) {
+      const p = placed[0];
+      consider(p.x + p.r + c.r + pad, p.y);
     }
+    for (let i = 0; i < placed.length; i++) {
+      for (let j = i + 1; j < placed.length; j++) {
+        const a = placed[i];
+        const b = placed[j];
+        const ra = a.r + c.r + pad;
+        const rb = b.r + c.r + pad;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy);
+        if (d > ra + rb || d < Math.abs(ra - rb) || d === 0) continue;
+        const l = (ra * ra - rb * rb + d * d) / (2 * d);
+        const h = Math.sqrt(Math.max(0, ra * ra - l * l));
+        const mx = a.x + (dx * l) / d;
+        const my = a.y + (dy * l) / d;
+        consider(mx + (h * dy) / d, my - (h * dx) / d);
+        consider(mx - (h * dy) / d, my + (h * dx) / d);
+      }
+    }
+    if (!best) best = {x: placed.reduce((m, p) => Math.max(m, p.x + p.r), 0) + c.r + pad, y: 0};
+    placed.push({...c, ...best});
   }
   return placed;
 }
 
-/** Phyllotaxis dots inside a cluster; returns radius and item offsets. */
-export function packItems(count, dot = 4.2, gap = 1.8) {
-  const step = dot * 2 + gap;
+/** Phyllotaxis dots inside a cluster. `spread` > 1 gives the zoomed-in, roomier arrangement. */
+export function packItems(count, spread = 1, dot = 4.2, gap = 1.8) {
+  const step = (dot * 2 + gap) * spread;
   const pts = [];
   for (let i = 0; i < count; i++) {
     const r = step * 0.62 * Math.sqrt(i + 0.5);
     const a = i * 2.399963229728653;
     pts.push({x: Math.cos(a) * r, y: Math.sin(a) * r});
   }
-  const radius = count ? step * 0.62 * Math.sqrt(count + 0.5) + dot + 5 : 14;
+  const radius = count ? step * 0.62 * Math.sqrt(count + 0.5) + dot * (spread > 1 ? 1.3 : 1) + 5 : 14;
   return {pts, radius};
+}
+
+/** Regular grid for the uncategorised band, centred on (0, 0). */
+export function packGrid(count, cols, step) {
+  const rows = Math.ceil(count / cols);
+  const pts = [];
+  for (let i = 0; i < count; i++) {
+    const r = Math.floor(i / cols);
+    const inRow = r === rows - 1 ? count - r * cols : cols;
+    pts.push({x: ((i % cols) - (inRow - 1) / 2) * step, y: (r - (rows - 1) / 2) * step});
+  }
+  return {pts, w: cols * step + step, h: rows * step + step};
 }

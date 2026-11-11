@@ -24,6 +24,7 @@ declare global {
                     'aiux-experience-page-rel|x-snc-catalogintel-incidents-page': {
                         table: 'sys_aix_experience_page_rel'
                         id: '121b18a6e34b77ce0ce6a0577ad01d45'
+                        deleted: true
                     }
                     'aiux-experience-prop|appHeadCss': {
                         table: 'sys_aix_experience_properties'
@@ -64,6 +65,7 @@ declare global {
                     'aiux-page-widget|x-snc-catalogintel-incidents-page': {
                         table: 'sys_aix_widget'
                         id: 'e1ba5d6e7cc804bf9b2f7a62eea45cd1'
+                        deleted: true
                     }
                     'aiux-page|x-snc-catalogintel-explore-page': {
                         table: 'sys_aix_page'
@@ -76,6 +78,7 @@ declare global {
                     'aiux-page|x-snc-catalogintel-incidents-page': {
                         table: 'sys_aix_page'
                         id: 'b424d5e8bd9e23cbca2cf666c2f24c68'
+                        deleted: true
                     }
                     'aiux-project|x_snc_catalogintel_catalogintelligence360': {
                         table: 'sys_aix_project'
@@ -88,6 +91,7 @@ declare global {
                     'aiux-widget|aiux-hello-world': {
                         table: 'sys_aix_widget'
                         id: '59be3863232c5f22bb3f799cdfc65a21'
+                        deleted: true
                     }
                     bom_json: {
                         table: 'sys_module'

@@ -14,7 +14,7 @@ export default {
         action: {type: 'navigate', path: '/home'}
       },
       {
-        icon: 'explore',
+        icon: 'compass',
         title: i18n.getMessage('Explore'),
         action: {type: 'navigate', path: '/explore'}
       }

@@ -10,8 +10,9 @@ A ServiceNow Lux Lab (AIUX) application that turns the native service catalog in
 
 - AIUX app (Lit components extending `AIUXElement`, Tailwind + DaisyUI) in `src/lux/`
   - `application.js`, `theme.js`: app shell and theme
-  - `pages/`: routes (Home, Explore planned)
-  - `widgets/`: reusable widgets
+  - `pages/`: routes (`home`, `explore`)
+  - `components/cat-universe.js`: the Living Catalog Universe
+  - `lib/catalog-data.js`: read-only catalog data layer and layout helpers
 - Read-only access to native tables (`sc_cat_item`, `sc_category`, `sc_cat_item_category`, `item_option_new`, `sc_req_item`, `service_offering`, `cmdb_rel_ci`, ...). No custom tables in the first milestone.
 - ServiceNow SDK (`now-sdk`) is the only deployment mechanism.
 
@@ -35,6 +36,6 @@ Authentication lives in the SDK credential store and in the local `.env` (git-ig
 ## Milestones
 
 1. **Phase 0:** workspace, GitHub and catalog discovery (done)
-2. **Home + Explore:** light-themed Living Catalog Universe with animated clusters, progressive disclosure and intelligence lenses
+2. **Home + Explore:** light-themed Living Catalog Universe with animated clusters, progressive disclosure and intelligence lenses (built; visual refinement in progress)
 3. **Intelligence lenses:** data quality, request activity, CSDM alignment
 4. **AI assistance:** Otto and Now Assist driven catalog improvement suggestions

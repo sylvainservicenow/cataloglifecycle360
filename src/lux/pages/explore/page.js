@@ -9,7 +9,8 @@ export default class ExplorePage extends AIUXElement {
   static styles = css`
     :host {
       display: block;
-      height: calc(100dvh - 90px);
+      /* leaves room for the platform's Otto input bar below the universe */
+      height: calc(100dvh - 176px);
       min-height: 480px;
     }
   `;
@@ -20,8 +21,7 @@ export default class ExplorePage extends AIUXElement {
 
   render() {
     return html`
-      <h1 class="sr-only">${i18n.getMessage('Explore the catalog universe')}</h1>
-      <cat-universe class="block h-full w-full overflow-hidden rounded-2xl border border-base-300"></cat-universe>
+      <cat-universe class="h-full w-full"></cat-universe>
     `;
   }
 }
