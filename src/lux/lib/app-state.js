@@ -45,3 +45,33 @@ export function destination(page, s = state) {
   }
   return destination('explore', s);
 }
+
+/**
+ * The one deep-link contract between Home, Explore and Otto. Only stable, semantic identifiers
+ * travel in the URL (never lists of sys_ids); Explore resolves the population from the native
+ * catalog model it already holds.
+ *   lens       overview | quality | lifecycle | demand | csdm
+ *   highlight  all | requested | complete | categories | service
+ *              metadata-gaps | form-gaps | overlap | taxonomy-gaps | service-candidates   (these open an investigation)
+ *   d          an investigation id (same as the five highlights above)
+ *   cat, item  a category / item sys_id
+ */
+export const HIGHLIGHT_INVESTIGATION = {
+  'metadata-gaps': 'ai-readiness',
+  'form-gaps': 'form-intelligence',
+  overlap: 'overlap',
+  'taxonomy-gaps': 'taxonomy',
+  'service-candidates': 'csdm-alignment'
+};
+export const POPULATIONS = ['all', 'requested', 'complete', 'categories', 'service'];
+export const HIGHLIGHT_LENS = {requested: 'demand', complete: 'quality', service: 'csdm', all: 'overview'};
+
+export function exploreLink({lens, d, cat, item, highlight} = {}) {
+  const q = new URLSearchParams();
+  if (highlight) q.set('highlight', highlight);
+  if (d) q.set('d', d);
+  if (lens) q.set('lens', lens);
+  if (cat) q.set('cat', cat);
+  if (item) q.set('item', item);
+  return `/explore${q.size ? `?${q}` : ''}`;
+}

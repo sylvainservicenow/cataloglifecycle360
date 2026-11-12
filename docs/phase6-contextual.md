@@ -8,3 +8,7 @@ Journey: Select → Understand → Act → Review → Apply, all in Explore.
 - A proposal is bound to its own record (`_proposal`), survives view switches and selecting other items, can be resumed or discarded, and never retargets. Apply, read-back and findings refresh are unchanged.
 - Otto tools use the same actions and now start the assessment.
 - Universe and inspector are not remounted when switching views (only after a verified category change, which reloads the catalog).
+
+## Phase 7: interactive Home and deep-link contract
+
+`lib/app-state.js` `exploreLink({lens, d, cat, item, highlight})` is the one contract. `highlight` = `all | requested | complete | categories | service` (population highlights, resolved from the native model with the same predicates as the Home KPIs) or `metadata-gaps | form-gaps | overlap | taxonomy-gaps | service-candidates` (open the matching investigation). The highlight survives until cleared; opening an investigation replaces it. No sys_ids travel in URLs.

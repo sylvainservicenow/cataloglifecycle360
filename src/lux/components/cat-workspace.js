@@ -3,7 +3,7 @@ import {customElement} from 'lit/decorators.js';
 import {AIUXElement, withWidgetContext} from '@servicenow/aiux/aiux-components-core';
 import {i18n} from '@servicenow/aiux/aiux-services';
 import {keyed} from 'lit/directives/keyed.js';
-import {applyPersisted, classLabel, clearItemVariables, loadCatalog, loadItemVariables, loadTextFacts, loadVariableStats} from '../lib/catalog-data.js';
+import {applyPersisted, CRITERIA, classLabel, clearItemVariables, loadCatalog, loadItemVariables, loadTextFacts, loadVariableStats} from '../lib/catalog-data.js';
 import {classBreakdown, distribution, nodeIndex, scopedIds} from '../lib/discovery.js';
 import {assessVariables, buildAiReadiness, DIMENSIONS, failedCount} from '../lib/investigations/ai-readiness.js';
 import {buildFormIntelligence, isInput, loadAllVariables, loadChoices, patchVariables} from '../lib/investigations/form-intelligence.js';
@@ -11,7 +11,7 @@ import {buildOverlap, KIND as OVERLAP_KIND} from '../lib/investigations/overlap.
 import {buildTaxonomy, categoryCandidates, ISSUE as TAXONOMY_ISSUE} from '../lib/investigations/taxonomy.js';
 import {buildCsdm, loadServiceData, offeringCandidates, offeringFallback, resetServiceData} from '../lib/investigations/csdm.js';
 import {OTTO_TOOLS, ottoContext} from '../lib/otto.js';
-import {setAppState} from '../lib/app-state.js';
+import {setAppState, HIGHLIGHT_INVESTIGATION, HIGHLIGHT_LENS, POPULATIONS} from '../lib/app-state.js';
 import './cat-universe.js';
 import '../widgets/semantic-assess/index.js';
 import '../widgets/catalog-transform/index.js';
@@ -131,7 +131,8 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
     _caps: {state: true},
     _vars: {state: true},
     _allCats: {state: true},
-    _proposal: {state: true}
+    _proposal: {state: true},
+    _hl: {state: true}
   };
 
   static styles = css`
@@ -293,6 +294,43 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
     }
     .workspace[hidden] {
       display: none;
+    }
+    .hl {
+      display: grid;
+      gap: 6px;
+      padding: 12px;
+      border-radius: 1rem;
+      border: 1px solid rgba(47, 111, 237, 0.3);
+      background: #f3f7ff;
+    }
+    .hl p {
+      margin: 0;
+    }
+    .hl-head {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      color: #032d42;
+    }
+    .hl-n {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #1d4fb8;
+    }
+    .hl-key {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 3px;
+      font-size: 0.82rem;
+    }
+    .hl-key .sw {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
     }
     .acts {
       list-style: none;
@@ -1025,6 +1063,7 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
     this._readiness = null;
     this._readinessError = '';
     this._active = null; // null: the selected item's own intelligence; otherwise one catalog-wide view
+    this._hl = ''; // the requested population to highlight (see lib/app-state.js), kept until cleared
     this._proposal = null; // {id, name, mode, done}: the one proposal being prepared, bound to its record
     this._lensInit = '';
     this._lensNow = '';
@@ -1079,6 +1118,7 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
     try {
       this._model = await loadCatalog();
       if (this._active) await this._ensure(this._active);
+      if (this._hl === 'service') this._ensure('csdm-alignment');
       if (this._item) {
         this._wantText();
         this._warm();
@@ -1178,8 +1218,10 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
   _readUrl(initial = false) {
     const q = new URLSearchParams(window.location.search);
     const d = q.get('d');
-    this._active = INVESTIGATIONS.includes(d) ? d : null;
-    if (initial) this._lensInit = q.get('lens') || '';
+    const hl = q.get('highlight') || '';
+    this._active = INVESTIGATIONS.includes(d) ? d : HIGHLIGHT_INVESTIGATION[hl] || null;
+    this._hl = this._active ? '' : POPULATIONS.includes(hl) ? hl : '';
+    if (initial) this._lensInit = q.get('lens') || HIGHLIGHT_LENS[this._hl] || '';
     this._cat = q.get('cat') || null;
     this._item = q.get('item') || null;
     this._cls = q.get('type') || '';
@@ -1191,6 +1233,7 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
   _syncUrl() {
     const q = new URLSearchParams();
     if (this._active) q.set('d', this._active);
+    else if (this._hl) q.set('highlight', this._hl);
     if (this._cat) q.set('cat', this._cat);
     if (this._item) q.set('item', this._item);
     if (this._cls) q.set('type', this._cls);
@@ -1200,6 +1243,7 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
   _openDiscovery(id) {
     if (!INVESTIGATIONS.includes(id)) throw new Error(`Unknown investigation "${id}". Choose one of: ${INVESTIGATIONS.join(', ')}`);
     this._active = id;
+    this._hl = '';
     // a workspace belongs to the investigation that opened it
     // an unfinished proposal is hidden, not lost: it stays bound to its record and can be resumed
     this._prepare = false;
@@ -1210,6 +1254,61 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
     this._syncUrl();
     this._ensure(id);
     if (this._item) this._loadVars(this._item);
+  }
+
+  _clearHl = () => {
+    this._hl = '';
+    this._syncUrl();
+  };
+
+  /** The requested population, resolved from the native catalog model: markers for the universe and the words that explain it. */
+  _hlView() {
+    const h = this._hl;
+    const m = this._model;
+    if (!h || !m) return null;
+    const pick = (test, color) => Object.fromEntries(m.nodes.filter(test).map(n => [n.id, color]));
+    if (h === 'requested') {
+      const ids = m.nodes.filter(n => n.requests > 0);
+      const total = ids.reduce((a, n) => a + n.requests, 0);
+      return {title: i18n.getMessage('Requested items'), count: ids.length, markers: pick(n => n.requests > 0, '#2F6FED'),
+        text: i18n.getMessage('{0} catalog items have at least one request in the request items table, {1} request records in all. Every other item is subdued.', fmt(ids.length), fmt(total)),
+        legend: [{color: '#2F6FED', label: i18n.getMessage('Requested at least once · {0} items', fmt(ids.length))}, {color: '#C3CEDC', label: i18n.getMessage('Never requested · {0}', fmt(m.nodes.length - ids.length))}]};
+    }
+    if (h === 'complete') {
+      const done = n => n.fields === CRITERIA.length;
+      const c = m.nodes.filter(done).length;
+      return {title: i18n.getMessage('Items with complete metadata'), count: c, markers: pick(done, '#12A150'),
+        text: i18n.getMessage('{0} items have all of: {1}. This is the same definition as the figure on Home.', fmt(c), CRITERIA.map(x => x.label()).join(', ')),
+        legend: [{color: '#12A150', label: i18n.getMessage('Complete · {0} items', fmt(c))}, {color: '#C3CEDC', label: i18n.getMessage('At least one gap · {0}', fmt(m.nodes.length - c))}]};
+    }
+    if (h === 'service') {
+      const c = this._disc.csdm;
+      if (!c) return {title: i18n.getMessage('Service alignment'), count: null, markers: null, text: i18n.getMessage('Reading service offerings and their links…'), legend: []};
+      const v = new Set(c.verifiedIds);
+      return {title: i18n.getMessage('Service offering context'), count: v.size + c.candidates.size,
+        markers: {...pick(n => c.candidates.has(n.id), '#7C3AED'), ...pick(n => v.has(n.id), '#0E9F8E')},
+        text: i18n.getMessage('{0} items are linked to a service offering (verified) and {1} more may align with one (suggested, not verified). No link is not a gap.', fmt(v.size), fmt(c.candidates.size)),
+        legend: [{color: '#0E9F8E', label: i18n.getMessage('Verified link · {0}', fmt(v.size))}, {color: '#7C3AED', label: i18n.getMessage('Suggested, not verified · {0}', fmt(c.candidates.size))}]};
+    }
+    if (h === 'categories') {
+      const cats = m.clusters.filter(c => !c.uncategorised).sort((a, b) => b.items.length - a.items.length);
+      return {title: i18n.getMessage('Categories in use'), count: cats.length, markers: null, cats,
+        text: i18n.getMessage('{0} categories hold at least one item. Choose one to focus it in the universe.', fmt(cats.length)), legend: []};
+    }
+    return {title: i18n.getMessage('Full catalog'), count: m.nodes.length, markers: null,
+      text: i18n.getMessage('All {0} catalog items, coloured by item type. Click a dot to see its findings and AI actions.', fmt(m.nodes.length)), legend: []};
+  }
+
+  _renderHighlight(hl) {
+    if (!hl) return nothing;
+    return html`<section class="hl" aria-label=${i18n.getMessage('Highlighted population')}>
+      <div class="hl-head"><b>${hl.title}</b>${hl.count != null ? html`<span class="hl-n">${fmt(hl.count)}</span>` : nothing}</div>
+      <p>${hl.text}</p>
+      ${hl.legend.length ? html`<ul class="hl-key">${hl.legend.map(l => html`<li><i class="sw" style=${`background:${l.color}`} aria-hidden="true"></i>${l.label}</li>`)}</ul>` : nothing}
+      ${hl.cats ? html`<ul class="starts">${hl.cats.slice(0, 40).map(c => html`<li><button aria-pressed=${this._cat === c.id} @click=${() => this._setCat(this._cat === c.id ? null : c.id)}><span class="t">${c.title}</span><small>${i18n.getMessage('{0} items', fmt(c.items.length))}</small></button></li>`)}</ul>${hl.cats.length > 40 ? html`<p class="hint">${i18n.getMessage('and {0} more. Zoom the universe to see them all.', fmt(hl.cats.length - 40))}</p>` : nothing}` : nothing}
+      <p class="hint">${i18n.getMessage('Select a dot to see that item’s findings and the AI actions available for it.')}</p>
+      <button class="chip" @click=${this._clearHl}>${i18n.getMessage('Clear highlight')} ✕</button>
+    </section>`;
   }
 
   /** Back to the selected item's own intelligence. */
@@ -1617,7 +1716,8 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
     if (!this._model) {
       return html`<div class="state card" role="status">${i18n.getMessage('Mapping your catalog universe…')}</div>`;
     }
-    const view = this._active ? this._markers() : {markers: null, legend: null};
+    const hl = this._hlView();
+    const view = this._active ? this._markers() : {markers: hl?.markers ?? null, legend: hl?.legend ?? null};
     const n = this._item ? nodeIndex(this._model).get(this._item) : null;
     const showInsp = !!n && this._inspOpen;
     return html`
@@ -1994,8 +2094,9 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
 
   _renderHome() {
     const n = this._item ? nodeIndex(this._model).get(this._item) : null;
+    const hl = this._renderHighlight(this._hlView());
     if (!n) {
-      return html`<div class="focus-body"><h1>${i18n.getMessage('Catalog intelligence')}</h1>
+      return html`<div class="focus-body"><h1>${i18n.getMessage('Catalog intelligence')}</h1>${hl}
         <p>${i18n.getMessage('Click a dot in the universe to select an item. Its findings and the AI actions you can run on it appear here.')}</p>
         <p class="hint">${i18n.getMessage('Or choose a view above to see a whole check across the catalog: Metadata, Forms, Overlap, Categories or Services.')}</p></div>`;
     }
@@ -2006,6 +2107,7 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
       ${x.evidence.map(t => html`<small>${t}</small>`)}
       <button class="primary" ?disabled=${x.disabled} @click=${() => this._runAction(x.kind)}>${x.button}</button></li>`;
     return html`<div class="focus-body">
+      ${hl}
       ${this._renderTarget()}
       ${hot.length ? html`<h3 class="sh">${i18n.getMessage('Suggested next steps')}</h3><ul class="acts">${hot.map(card)}</ul>` : nothing}
       <h3 class="sh">${hot.length ? i18n.getMessage('Other AI actions') : i18n.getMessage('AI actions')}</h3>
