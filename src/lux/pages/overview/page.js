@@ -6,14 +6,11 @@ import {AIUXElement, withWidgetContext, decorators} from '@servicenow/aiux/aiux-
 const {global} = decorators;
 import {navigate} from '@servicenow/aiux/aiux-client';
 import {i18n} from '@servicenow/aiux/aiux-services';
-import {loadCatalog, loadTextFacts, loadVariableStats} from '../../lib/catalog-data.js';
-import {buildAiReadiness} from '../../lib/investigations/ai-readiness.js';
-import {buildFormIntelligence, loadAllVariables} from '../../lib/investigations/form-intelligence.js';
-import {buildOverlap} from '../../lib/investigations/overlap.js';
-import {buildTaxonomy} from '../../lib/investigations/taxonomy.js';
-import {buildCsdm, loadServiceData} from '../../lib/investigations/csdm.js';
+import {loadCatalog} from '../../lib/catalog-data.js';
+import {loadOpportunities} from '../../lib/opportunity-loader.js';
 import {OTTO_TOOLS, ottoContext} from '../../lib/otto.js';
 import {exploreLink} from '../../lib/app-state.js';
+import {PILLARS, pillarStyles} from '../../lib/pillars.js';
 import '../../components/cat-universe.js';
 import '../../components/cat-appnav.js';
 
@@ -32,7 +29,7 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
     _opps: {state: true}
   };
 
-  static styles = css`
+  static styles = [pillarStyles, css`
     :host {
       display: block;
       width: 100%;
@@ -332,7 +329,7 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
         transform: none;
       }
     }
-  `;
+  `];
 
   constructor() {
     super();
@@ -350,29 +347,7 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
     loadCatalog()
       .then(m => {
         this._stats = m.stats;
-        this._opps = {};
-        // Each opportunity is computed from real records and appears as soon as it is ready, so the first card never waits for the others.
-        const put = (key, fn) => Promise.resolve().then(fn).then(v => (this._opps = {...this._opps, [key]: v})).catch(() => (this._opps = {...this._opps, [key]: {error: true}}));
-        put('taxonomy', () => {
-          const d = buildTaxonomy(m).discovery;
-          return {n: d.affectedIds.length, of: d.stats.active, uncategorised: d.stats.uncategorised};
-        });
-        put('overlap', () => loadTextFacts(m).catch(() => {}).then(() => {
-          const d = buildOverlap(m).discovery;
-          return {n: d.stats.groups, items: d.affectedIds.length, of: d.stats.active};
-        }));
-        put('meta', () => Promise.all([loadVariableStats(), loadTextFacts(m)]).then(([v]) => {
-          const d = buildAiReadiness(m, v).discovery;
-          return {n: d.affectedIds.length, of: d.stats.active};
-        }));
-        put('form', () => Promise.all([loadVariableStats(), loadAllVariables()]).then(([v, vars]) => {
-          const d = buildFormIntelligence(m, v, vars).discovery;
-          return {n: d.affectedIds.length, of: d.stats.withForm};
-        }));
-        put('csdm', () => loadServiceData().then(data => {
-          const d = buildCsdm(m, data).discovery;
-          return {verified: d.stats.verified, candidates: d.stats.candidates, offerings: d.stats.offerings};
-        }));
+        loadOpportunities(m, o => (this._opps = o));
       })
       .catch(() => (this._stats = null));
   }
@@ -442,11 +417,32 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
     return {cards: ready.slice(0, 4), pending: defs.filter(d => !o[d.key]).length};
   }
 
+  /** Understand → Grow → Improve: the three ways into the lifecycle. */
+  _renderPillars() {
+    return html`<section aria-labelledby="lifecycle" class="flex flex-col gap-2">
+      <h2 id="lifecycle" class="sec">${i18n.getMessage('The catalog lifecycle')}</h2>
+      <div class="pillars">
+        ${PILLARS.map(
+          p => html`<a class="pillar rise" style="--tone:${p.tone};--tint:${p.tint}" data-pillar=${p.id} href=${`${this._base}${p.path()}`} @click=${e => this._tile(e, p.path())}>
+            <span class="p-head">
+              <span class="p-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d=${p.icon}></path></svg></span>
+              <span class="p-title">${p.title()}</span>
+              ${p.badge ? html`<span class="p-badge">${p.badge()}</span>` : nothing}
+            </span>
+            <span class="p-verb">${p.verb()}</span>
+            <p>${p.text()}</p>
+            <span class="p-cta">${p.cta()} →</span>
+          </a>`
+        )}
+      </div>
+    </section>`;
+  }
+
   _renderOpportunities() {
     const {cards, pending} = this._rankedOpportunities();
     const slots = pending ? 4 : cards.length;
     return html`<section aria-labelledby="opps" class="flex flex-col gap-2">
-      <h2 id="opps" class="sec">${i18n.getMessage('Where to look first')}</h2>
+      <h2 id="opps" class="sec">${i18n.getMessage('Where to improve first')}</h2>
       <div class="grid four opps">
         ${cards.map(d => {
           const target = exploreLink({highlight: d.highlight});
@@ -471,6 +467,7 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
         <section class="rise flex flex-col gap-1">
           <p class="font-mono text-xs uppercase tracking-wide text-primary-900">${i18n.getMessage('Catalog Lifecycle 360')}</p>
           <h1 class="max-w-3xl break-words text-3xl font-bold text-text-primary">${i18n.getMessage('Your service catalog, as a living universe.')}</h1>
+          <p class="max-w-3xl text-sm text-text-secondary">${i18n.getMessage('Understand what exists, grow what is missing and improve what is already there.')}</p>
         </section>
 
         <section class="hero" aria-label=${i18n.getMessage('Catalog overview')}>
@@ -489,6 +486,8 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
             ${this._renderAi()}
           </div>
         </section>
+
+        ${this._renderPillars()}
 
         ${this._opps ? this._renderOpportunities() : nothing}
       </div>

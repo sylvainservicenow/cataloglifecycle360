@@ -13,13 +13,37 @@ declare global {
                         table: 'sys_aix_dependency'
                         id: 'ea33604cb69719ab9ba6cf7ce45b256e'
                     }
+                    'aiux-dependency|cat-universe.js': {
+                        table: 'sys_aix_dependency'
+                        id: '114cabdbf2855561e4f4d408ce6de885'
+                    }
                     'aiux-dependency|catalog-data.js': {
                         table: 'sys_aix_dependency'
                         id: 'dbcaf7a5e92d4f5410639c277298c714'
                     }
+                    'aiux-dependency|icons.js': {
+                        table: 'sys_aix_dependency'
+                        id: 'c40983786024185c482345e7eea0e3f7'
+                    }
+                    'aiux-dependency|pillars.js': {
+                        table: 'sys_aix_dependency'
+                        id: 'e1f79b0b2640ba51e3be19dc836dfaa8'
+                    }
+                    'aiux-dependency|taxonomy.js': {
+                        table: 'sys_aix_dependency'
+                        id: '28a455d2095bd63b17a6b8a6b09ab3ba'
+                    }
                     'aiux-experience-page-rel|x-snc-catlife360-explore-page': {
                         table: 'sys_aix_experience_page_rel'
                         id: '73e695d6c19dfcb53d354c1b1580816e'
+                    }
+                    'aiux-experience-page-rel|x-snc-catlife360-grow-page': {
+                        table: 'sys_aix_experience_page_rel'
+                        id: 'e95468fc0a76e17233ac890a8826b39d'
+                    }
+                    'aiux-experience-page-rel|x-snc-catlife360-improve-page': {
+                        table: 'sys_aix_experience_page_rel'
+                        id: '9d50f60d5f71309a1be110d23e65d08b'
                     }
                     'aiux-experience-page-rel|x-snc-catlife360-investigate-page': {
                         table: 'sys_aix_experience_page_rel'
@@ -61,13 +85,65 @@ declare global {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: '383a7b1b0b9c3446b01e65e95fbc3831'
                     }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-explore-page|cat-universe.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '306f57ecc421555f95bdb524bad240c0'
+                    }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-explore-page|icons.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '961f90cfd918384ac88ecb1eb452c2eb'
+                    }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-explore-page|taxonomy.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '47ac553bc34529c60866520433822ae0'
+                    }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-grow-page|cat-appnav.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '0a20170e430bbcb6afeef06a03bea6cf'
+                    }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-improve-page|cat-appnav.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '72162ddc250e7ee851d8cd1dbcc5b600'
+                    }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-improve-page|icons.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: 'c20dfadf0eab0935f17fffced8362826'
+                    }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-improve-page|pillars.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: 'd03706fd085672cfd3f8f7fc40ff1889'
+                    }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-improve-page|taxonomy.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: 'c5da4a669ef3b22184b21d2a32d6b788'
+                    }
                     'aiux-m2m-widget-dep|x-snc-catlife360-overview-page|cat-appnav.js': {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: '84d9c8e870654179be65375f2c4997d3'
                     }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-overview-page|cat-universe.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: 'fbb8f5b27787b887de6b8e7c2357eef8'
+                    }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-overview-page|pillars.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '3bdc30876bccfc2d23a09195e8272a6a'
+                    }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-overview-page|taxonomy.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '3685c43fd57e0126a44e1ec3fcdb4b78'
+                    }
                     'aiux-page-widget|x-snc-catlife360-explore-page': {
                         table: 'sys_aix_widget'
                         id: '2eca7e1f3a6cc0252987c0af9677d69b'
+                    }
+                    'aiux-page-widget|x-snc-catlife360-grow-page': {
+                        table: 'sys_aix_widget'
+                        id: '282ba27f0e3898d7ad6fd4837aa5c5d6'
+                    }
+                    'aiux-page-widget|x-snc-catlife360-improve-page': {
+                        table: 'sys_aix_widget'
+                        id: '06f7ab7040704fc6daa32c19c9e51aef'
                     }
                     'aiux-page-widget|x-snc-catlife360-investigate-page': {
                         table: 'sys_aix_widget'
@@ -80,6 +156,14 @@ declare global {
                     'aiux-page|x-snc-catlife360-explore-page': {
                         table: 'sys_aix_page'
                         id: 'c587e7466a029a18e55dad60543c6dff'
+                    }
+                    'aiux-page|x-snc-catlife360-grow-page': {
+                        table: 'sys_aix_page'
+                        id: '344ae1bfedb6bc5780d253924f9cad37'
+                    }
+                    'aiux-page|x-snc-catlife360-improve-page': {
+                        table: 'sys_aix_page'
+                        id: 'd4d311651bdb17e2162f322c37e211eb'
                     }
                     'aiux-page|x-snc-catlife360-investigate-page': {
                         table: 'sys_aix_page'

@@ -4,6 +4,7 @@ A ServiceNow Lux Lab (AIUX) application that turns the native service catalog in
 
 - **Scope:** `x_snc_catlife360`
 - **App URL basename:** `cataloglifecycle360`
+- **Experience:** Understand (`/explore`), Grow (`/grow`, simulated Assembly Line, see `docs/grow-integration.md`), Improve (`/improve`), with Home (`/overview`) as the lifecycle overview
 - **Landing page:** `/aiux/cataloglifecycle360/overview`
 - **Repository:** `sylvainservicenow/cataloglifecycle360` (independent fork of Catalog Intelligence 360, which is not modified by this project)
 

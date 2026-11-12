@@ -15,8 +15,18 @@ export default {
       },
       {
         icon: 'compass',
-        title: i18n.getMessage('Explore'),
+        title: i18n.getMessage('Understand'),
         action: {type: 'navigate', path: '/explore'}
+      },
+      {
+        icon: 'plus',
+        title: i18n.getMessage('Grow'),
+        action: {type: 'navigate', path: '/grow'}
+      },
+      {
+        icon: 'gear',
+        title: i18n.getMessage('Improve'),
+        action: {type: 'navigate', path: '/improve'}
       }
     ];
 

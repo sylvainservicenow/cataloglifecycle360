@@ -37,6 +37,8 @@ export function subscribeAppState(fn) {
 export function destination(page, s = state) {
   const q = new URLSearchParams();
   if (page === 'overview') return '/overview';
+  if (page === 'grow') return '/grow';
+  if (page === 'improve') return '/improve';
   if (page === 'explore') {
     if (s.itemId) q.set('item', s.itemId);
     if (s.investigation) q.set('d', s.investigation);
