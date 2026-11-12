@@ -42,19 +42,25 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
       display: grid;
       grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
       gap: 16px;
-      height: clamp(340px, calc(100dvh - 470px), 560px);
+      align-items: stretch;
+      /* the right column sets the row height; the universe tile stretches to match it */
+      min-height: clamp(340px, 42dvh, 520px);
     }
     .hero-universe {
       position: relative;
+      display: flex;
+      flex-direction: column;
       min-height: 0;
       border-radius: 1.75rem;
       overflow: hidden;
       cursor: pointer;
       transition: box-shadow 0.3s ease, transform 0.3s ease;
     }
+    /* keep the universe's own flex layout so its stage fills the whole tile */
     .hero-universe cat-universe {
-      display: block;
-      height: 100%;
+      flex: 1;
+      min-height: 0;
+      height: auto;
     }
     .hero-universe:hover,
     .hero-universe:focus-within {
@@ -65,7 +71,6 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
       display: flex;
       flex-direction: column;
       gap: 12px;
-      min-height: 0;
     }
     .grid {
       display: grid;
@@ -73,7 +78,6 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
     }
     .grid.kpis {
       flex: 1;
-      min-height: 0;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       grid-auto-rows: minmax(0, 1fr);
     }

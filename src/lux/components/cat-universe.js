@@ -973,9 +973,12 @@ export default class CatUniverse extends AIUXElement {
       await this.updateComplete;
       const stage = this.renderRoot.querySelector('.stage');
       let lastW = stage.clientWidth;
+      let lastH = stage.clientHeight;
       this._ro = new ResizeObserver(() => {
-        if (!this._focus && Math.abs(stage.clientWidth - lastW) > 2) this._cam = this._fitAll();
+        // refit when the container changes in either direction, not only in width
+        if (!this._focus && (Math.abs(stage.clientWidth - lastW) > 2 || Math.abs(stage.clientHeight - lastH) > 2)) this._cam = this._fitAll();
         lastW = stage.clientWidth;
+        lastH = stage.clientHeight;
         this._narrow = lastW < 220;
         this._applyCam();
       });
@@ -1047,7 +1050,7 @@ export default class CatUniverse extends AIUXElement {
     const {minX, maxX, minY, maxY} = this._layout.bounds;
     const {w, h} = this._stageSize();
     const dock = this.compact ? 0 : 74; // keep the bottom dock clear of the universe
-    const pad = 1.05;
+    const pad = this.compact ? 1.12 : 1.05; // the Home preview leaves a little air around the orbit
     const usableH = Math.max(120, h - dock);
     const ww = Math.max((maxX - minX) * pad, ((maxY - minY) * pad * w) / usableH);
     return {x: (minX + maxX) / 2, y: (minY + maxY) / 2 + (dock / 2) * (ww / w), w: ww};
