@@ -10,7 +10,7 @@ import {loadCatalog, classLabel} from './catalog-data.js';
  * existing investigation or workspace. Generating a proposal needs a click and saving
  * needs the person's confirmation, so no tool can change a record.
  */
-export const APP_NAME = 'Catalog Intelligence 360';
+export const APP_NAME = 'Catalog Lifecycle 360';
 const SYS_ID = /^[0-9a-f]{32}$/;
 
 export const INVESTIGATION_OF = {
@@ -70,7 +70,7 @@ async function open(page, d, args, {needsItem = false, workspace = false} = {}) 
   const params = {d, item: r.node?.id, cat: cat?.id ?? (r.node ? undefined : page._ottoSelection?.()?.categoryId), open: workspace ? 'workspace' : undefined};
   if (typeof page._ottoOpen === 'function') return page._ottoOpen(d, {itemId: r.node?.id, categoryId: cat?.id, workspace});
   navigate(investigateUrl(params));
-  return {success: true, navigating: true, investigation: INVESTIGATION_OF[d], selectedItem: r.node ? {item_id: r.node.id, name: r.node.name} : null, message: 'Opening the investigation in Catalog Intelligence 360.'};
+  return {success: true, navigating: true, investigation: INVESTIGATION_OF[d], selectedItem: r.node ? {item_id: r.node.id, name: r.node.name} : null, message: 'Opening the investigation in Catalog Lifecycle 360.'};
 }
 
 const ITEM_ARGS = [
@@ -82,49 +82,49 @@ const BOUNDARY = ' This is about the actual catalog in this ServiceNow instance:
 
 export const OTTO_TOOLS = {
   show_duplicate_items: {
-    description: `Show potentially duplicate or overlapping catalog items. Opens the Duplicates and overlap investigation of Catalog Intelligence 360 with the real candidate groups detected from catalog item names. Use for requests like "show duplicate catalog items", "which items overlap" or "similar requests".${BOUNDARY}`,
+    description: `Show potentially duplicate or overlapping catalog items. Opens the Duplicates and overlap investigation of Catalog Lifecycle 360 with the real candidate groups detected from catalog item names. Use for requests like "show duplicate catalog items", "which items overlap" or "similar requests".${BOUNDARY}`,
     arguments: [...ITEM_ARGS, CAT_ARG],
     definition: async function (args = {}) {
       return open(this, 'overlap', args);
     }
   },
   find_confusing_forms: {
-    description: `Find catalog items with confusing or unclear forms: missing or technical question labels, generic labels, required hard questions without guidance. Opens the Form intelligence investigation of Catalog Intelligence 360 with findings read from the real catalog variables. Use for "find items with confusing forms" or "which forms are unclear".${BOUNDARY}`,
+    description: `Find catalog items with confusing or unclear forms: missing or technical question labels, generic labels, required hard questions without guidance. Opens the Form intelligence investigation of Catalog Lifecycle 360 with findings read from the real catalog variables. Use for "find items with confusing forms" or "which forms are unclear".${BOUNDARY}`,
     arguments: [...ITEM_ARGS, CAT_ARG],
     definition: async function (args = {}) {
       return open(this, 'form-intelligence', args);
     }
   },
   recommend_category: {
-    description: `Recommend a better category for ONE specific catalog item, chosen only among the real existing categories. Opens the category recommendation workspace for that item in Catalog Intelligence 360. Requires an item: pass its sys_id, or omit it to use the item currently selected. If no item is selected the tool says so; then ask the person to select one. Never recommend categories from general knowledge or from spend or procurement taxonomies.${BOUNDARY}`,
+    description: `Recommend a better category for ONE specific catalog item, chosen only among the real existing categories. Opens the category recommendation workspace for that item in Catalog Lifecycle 360. Requires an item: pass its sys_id, or omit it to use the item currently selected. If no item is selected the tool says so; then ask the person to select one. Never recommend categories from general knowledge or from spend or procurement taxonomies.${BOUNDARY}`,
     arguments: ITEM_ARGS,
     definition: async function (args = {}) {
       return open(this, 'taxonomy', args, {needsItem: true, workspace: true});
     }
   },
   check_service_alignment: {
-    description: `Check whether ONE specific catalog item aligns with an existing ServiceNow service offering, using the native item-to-offering link table and real service offerings. Opens the Service alignment workspace for that item in Catalog Intelligence 360. Requires an item: pass its sys_id, or omit it to use the selected item. If none is selected the tool says so; then ask the person to select one.${BOUNDARY}`,
+    description: `Check whether ONE specific catalog item aligns with an existing ServiceNow service offering, using the native item-to-offering link table and real service offerings. Opens the Service alignment workspace for that item in Catalog Lifecycle 360. Requires an item: pass its sys_id, or omit it to use the selected item. If none is selected the tool says so; then ask the person to select one.${BOUNDARY}`,
     arguments: ITEM_ARGS,
     definition: async function (args = {}) {
       return open(this, 'csdm-alignment', args, {needsItem: true, workspace: true});
     }
   },
   prepare_improvements: {
-    description: `Prepare improvements for ONE specific catalog item: opens the Transform workspace of Catalog Intelligence 360, where an AI proposal for its short description and description is generated on request, reviewed and edited by the person, and saved only after explicit confirmation. Requires an item: pass its sys_id, or omit it to use the selected item.${BOUNDARY}`,
+    description: `Prepare improvements for ONE specific catalog item: opens the Transform workspace of Catalog Lifecycle 360, where an AI proposal for its short description and description is generated on request, reviewed and edited by the person, and saved only after explicit confirmation. Requires an item: pass its sys_id, or omit it to use the selected item.${BOUNDARY}`,
     arguments: ITEM_ARGS,
     definition: async function (args = {}) {
       return open(this, 'ai-readiness', args, {needsItem: true, workspace: true});
     }
   },
   suggest_form_questions: {
-    description: `Suggest a starter set of form questions with AI for ONE specific catalog item that has no input questions (or review its questions when it has some). Opens the form assessment for that item in Catalog Intelligence 360 and starts it; the person reviews, edits and approves before anything is created. Requires an item: pass its sys_id, or omit it to use the selected item.${BOUNDARY}`,
+    description: `Suggest a starter set of form questions with AI for ONE specific catalog item that has no input questions (or review its questions when it has some). Opens the form assessment for that item in Catalog Lifecycle 360 and starts it; the person reviews, edits and approves before anything is created. Requires an item: pass its sys_id, or omit it to use the selected item.${BOUNDARY}`,
     arguments: ITEM_ARGS,
     definition: async function (args = {}) {
       return open(this, 'form-intelligence', args, {needsItem: true, workspace: true});
     }
   },
   open_investigation: {
-    description: `Open one of the Catalog Intelligence 360 investigations by id: ai-readiness (metadata quality), form-intelligence, overlap (duplicates), taxonomy (categories) or csdm-alignment (service offerings).${BOUNDARY}`,
+    description: `Open one of the Catalog Lifecycle 360 investigations by id: ai-readiness (metadata quality), form-intelligence, overlap (duplicates), taxonomy (categories) or csdm-alignment (service offerings).${BOUNDARY}`,
     arguments: [{name: 'id', description: 'ai-readiness, form-intelligence, overlap, taxonomy or csdm-alignment', type: 'string', required: true}, ...ITEM_ARGS.slice(0, 1), CAT_ARG],
     definition: async function (args = {}) {
       if (!INVESTIGATION_OF[args.id]) return {success: false, error: `Unknown investigation "${args.id}". Use one of: ${Object.keys(INVESTIGATION_OF).join(', ')}.`};

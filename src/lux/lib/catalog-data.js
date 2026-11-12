@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ *
- * Catalog Intelligence 360 — read-only ServiceNow catalog data layer.
+ * Catalog Lifecycle 360 — read-only ServiceNow catalog data layer.
  *
  * Reads native tables only (sc_cat_item, sc_category, sc_cat_item_category,
  * sc_req_item, service_offering). Nothing is created, guessed or defaulted:

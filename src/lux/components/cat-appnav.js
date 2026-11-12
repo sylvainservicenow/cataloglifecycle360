@@ -106,8 +106,8 @@ export default class CatAppNav extends AIUXElement {
   connectedCallback() {
     super.connectedCallback();
     if (isServer) return;
-    const i = location.pathname.indexOf('/catalogintelligence360');
-    this._base = i >= 0 ? location.pathname.slice(0, i + '/catalogintelligence360'.length) : '';
+    const i = location.pathname.indexOf('/cataloglifecycle360');
+    this._base = i >= 0 ? location.pathname.slice(0, i + '/cataloglifecycle360'.length) : '';
     this._off = subscribeAppState(s => (this._state = s));
   }
 
@@ -135,7 +135,7 @@ export default class CatAppNav extends AIUXElement {
       ['overview', i18n.getMessage('Home')],
       ['explore', i18n.getMessage('Explore')]
     ];
-    return html`<nav aria-label=${i18n.getMessage('Catalog Intelligence 360')}>
+    return html`<nav aria-label=${i18n.getMessage('Catalog Lifecycle 360')}>
       <div class="tabs">
         ${items.map(([page, label]) => html`<a href=${`${this._base}${destination(page, this._state)}`} aria-current=${this.current === page ? 'page' : 'false'} @click=${e => this._go(e, page)}>${label}</a>`)}
       </div>

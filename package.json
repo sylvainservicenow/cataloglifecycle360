@@ -1,8 +1,8 @@
 {
-  "name": "catalogintelligence360",
-  "version": "1.0.4",
+  "name": "cataloglifecycle360",
+  "version": "1.0.0",
   "private": true,
-  "description": "AIUX application: CatalogIntelligence360",
+  "description": "AIUX application: Catalog Lifecycle 360",
   "scripts": {
     "build": "now-sdk build",
     "doctor": "aiux doctor",

@@ -1340,7 +1340,7 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
   }
 
   firstUpdated() {
-    document.title = i18n.getMessage('Explore · Catalog Intelligence 360');
+    document.title = i18n.getMessage('Explore · Catalog Lifecycle 360');
   }
 
   updated(changed) {

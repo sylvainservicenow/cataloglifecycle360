@@ -29,7 +29,7 @@ export default {
     const current = navLayoutContext.get();
     navLayoutContext.set({
       ...current,
-      appTitle: i18n.getMessage('CatalogIntelligence360'),
+      appTitle: i18n.getMessage('CatalogLifecycle360'),
       features: {
         unifiedExperience: true
       },

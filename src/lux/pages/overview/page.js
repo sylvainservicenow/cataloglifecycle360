@@ -1,6 +1,9 @@
 import {html, css, nothing, isServer} from 'lit';
 import {customElement} from 'lit/decorators.js';
-import {AIUXElement, withWidgetContext} from '@servicenow/aiux/aiux-components-core';
+import {AIUXElement, withWidgetContext, decorators} from '@servicenow/aiux/aiux-components-core';
+
+// application-local: this page is only reachable through this application's own experience
+const {global} = decorators;
 import {navigate} from '@servicenow/aiux/aiux-client';
 import {i18n} from '@servicenow/aiux/aiux-services';
 import {loadCatalog, loadTextFacts, loadVariableStats} from '../../lib/catalog-data.js';
@@ -14,10 +17,11 @@ import {exploreLink} from '../../lib/app-state.js';
 import '../../components/cat-universe.js';
 import '../../components/cat-appnav.js';
 
-@customElement('x-snc-catalogintel-overview-page')
+@customElement('x-snc-catlife360-overview-page')
+@global(false)
 export default class OverviewPage extends withWidgetContext(AIUXElement) {
   static aiContext = {
-    description: 'The Catalog Intelligence 360 overview: live opportunity counts for metadata, forms, duplicates, categories and service alignment in the real service catalog',
+    description: 'The Catalog Lifecycle 360 overview: live opportunity counts for metadata, forms, duplicates, categories and service alignment in the real service catalog',
     bestFor: 'When the user asks to find duplicate catalog items, confusing forms, poorly categorised items or service alignment, or to improve a catalog item'
   };
 
@@ -340,8 +344,8 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
   connectedCallback() {
     super.connectedCallback();
     if (!isServer) {
-      const i = location.pathname.indexOf('/catalogintelligence360');
-      this._base = i >= 0 ? location.pathname.slice(0, i + '/catalogintelligence360'.length) : '';
+      const i = location.pathname.indexOf('/cataloglifecycle360');
+      this._base = i >= 0 ? location.pathname.slice(0, i + '/cataloglifecycle360'.length) : '';
     }
     loadCatalog()
       .then(m => {
@@ -374,7 +378,7 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
   }
 
   firstUpdated() {
-    document.title = i18n.getMessage('Catalog Intelligence 360');
+    document.title = i18n.getMessage('Catalog Lifecycle 360');
     ottoContext(this, {page: 'Overview'}).then(c => this.setAiContext(c));
   }
 
@@ -465,7 +469,7 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
       <div class="mx-auto flex max-w-7xl flex-col gap-4">
         <cat-appnav current="overview"></cat-appnav>
         <section class="rise flex flex-col gap-1">
-          <p class="font-mono text-xs uppercase tracking-wide text-primary-900">${i18n.getMessage('Catalog Intelligence 360')}</p>
+          <p class="font-mono text-xs uppercase tracking-wide text-primary-900">${i18n.getMessage('Catalog Lifecycle 360')}</p>
           <h1 class="max-w-3xl break-words text-3xl font-bold text-text-primary">${i18n.getMessage('Your service catalog, as a living universe.')}</h1>
         </section>
 

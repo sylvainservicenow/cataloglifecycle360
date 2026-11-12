@@ -1,7 +1,7 @@
 {
-  "scope": "x_snc_catalogintel",
-  "scopeId": "1737bdb37e514beabc259abd93b68f65",
-  "name": "CatalogIntelligence360",
+  "scope": "x_snc_catlife360",
+  "scopeId": "ec8246c42f324116b1a90e23b790980e",
+  "name": "Catalog Lifecycle 360",
   "metadataDir": "src/plugin-xmls",
   "appOutputDir": "dist-metadata/app",
   "packageSourceCodeOnInstance": true,

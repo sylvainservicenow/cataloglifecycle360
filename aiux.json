@@ -1,7 +1,7 @@
 {
-  "name": "CatalogIntelligence360",
-  "projectId": "x_snc_catalogintel_catalogintelligence360",
-  "basename": "catalogintelligence360",
+  "name": "Catalog Lifecycle 360",
+  "projectId": "x_snc_catlife360_cataloglifecycle360",
+  "basename": "cataloglifecycle360",
   "srcDir": "src/lux",
   "landing": "/overview",
   "createAnalyticsApp": true,
@@ -9,6 +9,9 @@
     "token": ""
   },
   "build": {
-    "exclude": ["**/*.test.js", "**/test/**"]
+    "exclude": [
+      "**/*.test.js",
+      "**/test/**"
+    ]
   }
 }
