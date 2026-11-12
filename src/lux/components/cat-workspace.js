@@ -16,7 +16,9 @@ import './cat-universe.js';
 import '../widgets/semantic-assess/index.js';
 import '../widgets/catalog-transform/index.js';
 import '../widgets/cat-workbench/index.js';
-import './cat-appnav.js';
+import './cat-toolbar.js';
+import {buildOpportunities} from '../lib/opportunities.js';
+import {icon} from '../lib/icons.js';
 import './cat-inspector.js';
 
 const ACCENT = '#F2812F';
@@ -132,7 +134,11 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
     _vars: {state: true},
     _allCats: {state: true},
     _proposal: {state: true},
-    _hl: {state: true}
+    _hl: {state: true},
+    _group: {state: true},
+    _opp: {state: true},
+    _lensNow: {state: true},
+    _query: {state: true}
   };
 
   static styles = css`
@@ -331,6 +337,232 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
       height: 10px;
       border-radius: 50%;
       margin-right: 6px;
+    }
+    .ih {
+      display: grid;
+      gap: 4px;
+    }
+    .ih-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .ih h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      color: #032d42;
+    }
+    .spark {
+      display: inline-grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 10px;
+      color: #fff;
+      background: linear-gradient(135deg, #5b2db8, #2f6fed);
+    }
+    .spark svg {
+      width: 18px;
+      height: 18px;
+    }
+    .ctx {
+      margin: 0;
+      font-size: 0.78rem;
+      color: #656462;
+    }
+    .lead {
+      margin: 4px 0 0;
+      font-size: 0.9rem;
+      color: #1b1b1b;
+      line-height: 1.4;
+    }
+    .opps {
+      list-style: none;
+      margin: 4px 0 0;
+      padding: 0;
+      display: grid;
+      gap: 6px;
+    }
+    .opp {
+      --tone: #2f6fed;
+      width: 100%;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      text-align: left;
+      font: inherit;
+      color: #1b1b1b;
+      padding: 9px 10px;
+      border-radius: 0.95rem;
+      border: 1px solid rgba(3, 45, 66, 0.1);
+      border-left: 3px solid var(--tone);
+      background: #fff;
+      cursor: pointer;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+    }
+    .opp.red {
+      --tone: #d6383d;
+    }
+    .opp.amber {
+      --tone: #d9820b;
+    }
+    .opp.blue {
+      --tone: #2f6fed;
+    }
+    .opp:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 5px 16px rgba(3, 45, 66, 0.13);
+      background: #fbfcff;
+    }
+    .opp:focus-visible {
+      outline: 3px solid #2f6fed;
+      outline-offset: 2px;
+    }
+    .opp[aria-pressed='true'] {
+      background: #eef4ff;
+      box-shadow: inset 0 0 0 1px #2f6fed;
+    }
+    .opp.hero {
+      padding: 13px 12px;
+      background: linear-gradient(160deg, #f6f9ff, #ffffff 70%);
+    }
+    .oi {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      color: var(--tone);
+      background: color-mix(in srgb, var(--tone) 12%, #ffffff);
+    }
+    .oi svg,
+    .vi svg,
+    .ai-i svg {
+      width: 17px;
+      height: 17px;
+    }
+    .ob {
+      display: grid;
+      gap: 1px;
+      min-width: 0;
+    }
+    .ot {
+      font-weight: 600;
+      font-size: 0.88rem;
+      color: #032d42;
+      overflow-wrap: anywhere;
+    }
+    .hero .ot {
+      font-size: 0.98rem;
+    }
+    .or {
+      font-size: 0.8rem;
+      color: #3b3a38;
+      overflow-wrap: anywhere;
+    }
+    .om {
+      font-size: 0.72rem;
+      color: #656462;
+    }
+    .oa svg {
+      width: 16px;
+      height: 16px;
+      color: var(--tone);
+    }
+    .views {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 6px;
+    }
+    .view {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #032d42;
+      padding: 8px 10px;
+      border-radius: 0.9rem;
+      border: 1px solid rgba(3, 45, 66, 0.12);
+      background: #fff;
+      cursor: pointer;
+    }
+    .view b {
+      margin-left: auto;
+      color: #1d4fb8;
+      font-variant-numeric: tabular-nums;
+    }
+    .view:hover {
+      background: #f1f6ff;
+    }
+    .view:focus-visible {
+      outline: 3px solid #2f6fed;
+      outline-offset: 2px;
+    }
+    .vi,
+    .ai-i {
+      display: inline-grid;
+      color: #1d4fb8;
+    }
+    .catctx {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 10px;
+      padding: 8px 12px;
+      border-radius: 0.9rem;
+      background: #f1f6ff;
+      color: #1d3f85;
+    }
+    .why {
+      padding: 10px 12px;
+      border-radius: 0.95rem;
+      background: #fff8ec;
+      border: 1px solid rgba(217, 130, 11, 0.3);
+      font-size: 0.84rem;
+    }
+    .why p {
+      margin: 2px 0 4px;
+    }
+    .why ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 3px;
+    }
+    .vtag {
+      display: inline-block;
+      margin-right: 6px;
+      padding: 0 6px;
+      border-radius: 6px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .vtag.v {
+      background: #e3f6ea;
+      color: #0d4d28;
+    }
+    .vtag.h {
+      background: #fff3d1;
+      color: #7a5a00;
+    }
+    .at {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .opp {
+        transition: none;
+      }
+      .opp:hover {
+        transform: none;
+      }
     }
     .acts {
       list-style: none;
@@ -1063,6 +1295,12 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
     this._readiness = null;
     this._readinessError = '';
     this._active = null; // null: the selected item's own intelligence; otherwise one catalog-wide view
+    this._group = null; // the candidate group whose items are highlighted (chosen from an opportunity)
+    this._opp = null; // the opportunity that was chosen, so the panel can say why
+    this._lensNow = 'overview';
+    this._query = '';
+    this._nav = 'explore';
+    this._oppCache = null;
     this._hl = ''; // the requested population to highlight (see lib/app-state.js), kept until cleared
     this._proposal = null; // {id, name, mode, done}: the one proposal being prepared, bound to its record
     this._lensInit = '';
@@ -1108,7 +1346,7 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
   }
 
   updated(changed) {
-    if (this._model && ['_active', '_cat', '_item', '_cls', '_readiness', '_disc'].some(k => changed.has(k))) this._pushContext();
+    if (this._model && ['_active', '_cat', '_item', '_cls', '_readiness', '_disc', '_hl', '_lensNow'].some(k => changed.has(k))) this._pushContext();
     if (changed.has('_prepare') && this._prepare) this.renderRoot.querySelector('.workspace .back')?.focus();
     if (changed.has('_prepare') && !this._prepare && changed.get('_prepare')) this._opener?.focus?.();
   }
@@ -1118,6 +1356,7 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
     try {
       this._model = await loadCatalog();
       if (this._active) await this._ensure(this._active);
+      this._warm();
       if (this._hl === 'service') this._ensure('csdm-alignment');
       if (this._item) {
         this._wantText();
@@ -1219,9 +1458,15 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
     const q = new URLSearchParams(window.location.search);
     const d = q.get('d');
     const hl = q.get('highlight') || '';
+    this._nav = /\/investigate\/?$/.test(window.location.pathname) ? 'investigate' : 'explore';
     this._active = INVESTIGATIONS.includes(d) ? d : HIGHLIGHT_INVESTIGATION[hl] || null;
     this._hl = this._active ? '' : POPULATIONS.includes(hl) ? hl : '';
-    if (initial) this._lensInit = q.get('lens') || HIGHLIGHT_LENS[this._hl] || '';
+    // the Investigate route opens the same workspace on an investigation view
+    if (!this._active && !this._hl && /\/investigate\/?$/.test(window.location.pathname)) this._active = 'ai-readiness';
+    if (initial) {
+      this._lensInit = q.get('lens') || HIGHLIGHT_LENS[this._hl] || '';
+      this._lensNow = this._lensInit || 'overview';
+    }
     this._cat = q.get('cat') || null;
     this._item = q.get('item') || null;
     this._cls = q.get('type') || '';
@@ -1254,6 +1499,46 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
     this._syncUrl();
     this._ensure(id);
     if (this._item) this._loadVars(this._item);
+  }
+
+  _onToolbarLens = e => {
+    const lens = e.detail.lens;
+    if (this._active) this._goHome();
+    if (this._hl && HIGHLIGHT_LENS[this._hl] !== lens) this._hl = '';
+    this._lensNow = lens;
+    this._lensInit = lens;
+    this._syncUrl();
+  };
+
+  _focusGroup() {
+    const g = this._group;
+    return g && this._item && this._disc.overlap && g.ids.includes(this._item) ? g : null;
+  }
+
+  /** The Top opportunities for what is in scope (the whole catalog, a category or a highlighted population), computed from results already in memory. */
+  _oppList() {
+    const m = this._model;
+    if (!m) return [];
+    const hl = this._hlView();
+    const ids = hl?.markers ? new Set(Object.keys(hl.markers)) : null;
+    const e = {readiness: this._readiness, form: this._disc.form, overlap: this._disc.overlap, taxonomy: this._disc.taxonomy, csdm: this._disc.csdm};
+    const key = Object.values(e);
+    const f = `${this._hl}|${this._cat || ''}|${ids ? ids.size : ''}`;
+    const c = this._oppCache;
+    if (c && c.f === f && c.key.every((x, i) => x === key[i])) return c.list;
+    const list = buildOpportunities(m, e, {ids, catId: this._cat || null});
+    this._oppCache = {f, key, list};
+    return list;
+  }
+
+  /** Choose an opportunity: select the real item (and its group) in the universe and open the inspector. Nothing is sent to the AI. */
+  _pickOpp(o) {
+    this._leftOpen = true;
+    this._inspOpen = true;
+    this._opp = o;
+    this._group = o.group || null;
+    this._prepare = false;
+    this._setItem(o.itemId);
   }
 
   _clearHl = () => {
@@ -1326,6 +1611,7 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
 
   _setItem(id) {
     this._item = id || null;
+    if (this._opp && this._opp.itemId !== this._item) this._opp = null;
     this._vars = null;
     this._choices = null;
     if (this._item) {
@@ -1371,7 +1657,7 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
   }
 
   _pushContext() {
-    setAppState({investigation: this._active, itemId: this._item, categoryId: this._cat});
+    setAppState({investigation: this._active, itemId: this._item, categoryId: this._cat, highlight: this._hl, lens: this._lensNow});
     ottoContext(this, {page: 'Explore', investigation: this._active, itemId: this._item, categoryId: this._cat}).then(c => {
       const d = this._current();
       const p = this._proposal;
@@ -1381,6 +1667,9 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
         findings: d ? {title: d.title, classification: d.method.classification, affectedInScope: this._scopeIds().length} : null,
         overlapGroupItemIds: group ? group.ids : undefined,
         itemTypeFilter: this._cls || null,
+        highlight: this._hl ? {id: this._hl, title: this._hlView()?.title, count: this._hlView()?.count} : null,
+        selectedOverlapGroup: this._focusGroup() ? {group_id: `overlap:${[...this._focusGroup().ids].sort()[0]}`, item_ids: this._focusGroup().ids, kind: this._focusGroup().kind} : undefined,
+        topOpportunities: this._model && !this._item ? this._oppList().slice(0, 5).map(o => ({item_id: o.itemId, name: o.title, type: o.kind, reason: o.reason})) : undefined,
         proposal: p && !p.done ? {item_id: p.id, name: p.name, kind: p.mode, open: this._prepare} : null
       });
     });
@@ -1717,17 +2006,19 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
       return html`<div class="state card" role="status">${i18n.getMessage('Mapping your catalog universe…')}</div>`;
     }
     const hl = this._hlView();
-    const view = this._active ? this._markers() : {markers: hl?.markers ?? null, legend: hl?.legend ?? null};
+    const grp = this._focusGroup();
+    const view = this._active ? this._markers() : hl ? {markers: hl.markers, legend: hl.legend} : grp ? {markers: Object.fromEntries(grp.ids.map(id => [id, KIND_COLOR[grp.kind]])), legend: []} : {markers: null, legend: null};
     const n = this._item ? nodeIndex(this._model).get(this._item) : null;
     const showInsp = !!n && this._inspOpen;
     return html`
       <div class="page">
-      <cat-appnav current="explore"></cat-appnav>
+      <cat-toolbar current=${this._nav} .lens=${this._lensNow} .model=${this._model}
+        @cat-toolbar:lens=${this._onToolbarLens} @cat-toolbar:query=${e => (this._query = e.detail.q)} @cat-toolbar:pick=${e => { this._inspOpen = true; this._setItem(e.detail.id); }}></cat-toolbar>
       <div class="wrap ${this._leftOpen ? '' : 'lclosed'} ${this._prepare ? 'work' : ''} ${showInsp ? '' : 'noinsp'}" role="group" aria-label=${i18n.getMessage('Catalog workspace')} @keydown=${this._onKey}>
         ${this._renderFocus()}
         <div class="stagebox">
-          ${keyed(this._uniKey, html`<cat-universe hide-detail ?investigate=${!!this._active} .markers=${view.markers} .legendItems=${view.legend} .lens=${this._lensInit} focus-id=${this._cat ?? ''} selected-id=${this._item ?? ''}
-            @cat-universe:focus=${this._onUniFocus} @cat-universe:select=${this._onUniSelect} @cat-universe:lens=${e => (this._lensNow = e.detail.lens)}
+          ${keyed(this._uniKey, html`<cat-universe hide-detail hide-bar .externalQuery=${this._query} ?investigate=${!!this._active} .markers=${view.markers} .legendItems=${view.legend} .lens=${this._lensInit} focus-id=${this._cat ?? ''} selected-id=${this._item ?? ''}
+            @cat-universe:focus=${this._onUniFocus} @cat-universe:select=${this._onUniSelect} @cat-universe:lens=${e => { this._lensNow = e.detail.lens; this._lensInit = e.detail.lens; }}
             @cat-universe:investigate=${e => this._openDiscovery(e.detail.discovery)}></cat-universe>`)}
         </div>
         ${showInsp ? html`<div class="insp"><cat-inspector .model=${this._model} item-id=${n.id} .findings=${this._inspectorFindings(n)} @cat-inspector:close=${() => (this._inspOpen = false)}></cat-inspector></div>` : nothing}
@@ -1743,10 +2034,10 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
       <button class="rail" aria-expanded=${open} aria-controls="intel-body" @click=${() => (this._leftOpen = !open)}>
         <span aria-hidden="true">${open ? '‹' : '›'}</span><span>${open ? i18n.getMessage('Hide panel') : i18n.getMessage('Intelligence')}</span></button>
       <div class="focus-inner" id="intel-body" ?hidden=${!open}>
-        <div class="switch" role="group" aria-label=${i18n.getMessage('Choose an intelligence view')}>
-          <button aria-pressed=${!this._active} @click=${() => this._goHome()}>${i18n.getMessage('Item')}</button>
+        ${this._active ? html`<div class="switch" role="group" aria-label=${i18n.getMessage('Choose an intelligence view')}>
+          <button aria-pressed="false" @click=${() => this._goHome()}>← ${i18n.getMessage('Intelligence')}</button>
           ${INVESTIGATIONS.map(id => html`<button aria-pressed=${this._active === id} @click=${() => this._openDiscovery(id)}>${LABEL[id]()}</button>`)}
-        </div>
+        </div>` : nothing}
         ${this._discError ? html`<div class="note bad" role="alert">${i18n.getMessage('This investigation could not be built ({0}).', this._discError)} <button class="link" @click=${() => { this._discError = ''; this._ensure(this._active); }}>${i18n.getMessage('Retry')}</button></div>` : nothing}
         ${this._renderWorkspace()}
         ${this._prepare ? nothing : this._renderResume()}
@@ -2092,23 +2383,100 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
     return out;
   }
 
+  /* ---------- the Catalog Intelligence panel ---------- */
+  _pending() {
+    const out = [];
+    if (!this._readiness) out.push(i18n.getMessage('metadata'));
+    if (!this._disc.form) out.push(i18n.getMessage('forms'));
+    if (!this._disc.overlap) out.push(i18n.getMessage('duplicates'));
+    if (!this._disc.taxonomy) out.push(i18n.getMessage('categories'));
+    if (!this._disc.csdm) out.push(i18n.getMessage('services'));
+    return this._discError ? [] : out;
+  }
+
+  _renderHeader(compact) {
+    const st = this._model.stats;
+    return html`<header class="ih">
+      <div class="ih-top"><span class="spark">${icon('spark')}</span><h1>${i18n.getMessage('Catalog Intelligence')}</h1></div>
+      <p class="ctx">${i18n.getMessage('{0} items · {1} categories · {2} requested', fmt(st.items), fmt(st.populatedCategories), fmt(st.requestedItems))}</p>
+      ${compact ? nothing : this._renderLead()}
+    </header>`;
+  }
+
+  _renderLead() {
+    const list = this._oppList();
+    const wait = this._pending();
+    const where = this._cat ? this._model.clusters.find(c => c.id === this._cat)?.title : '';
+    return html`<p class="lead">${list.length
+        ? where ? i18n.getMessage('{0} specific opportunities in “{1}”, from your real records. Pick one to see it in the universe.', fmt(list.length), where) : i18n.getMessage('{0} specific things worth your attention, found in your real records. Pick one to see it in the universe.', fmt(list.length))
+        : wait.length ? i18n.getMessage('Reading your catalog to find what deserves attention…') : i18n.getMessage('No specific opportunity was found here. Select an item to see its findings.')}</p>
+      ${wait.length && list.length ? html`<p class="hint" role="status">${i18n.getMessage('Still reading: {0}.', wait.join(', '))}</p>` : nothing}`;
+  }
+
+  _oppCard(o, hero = false) {
+    const tone = o.strength >= 3 ? 'red' : o.strength === 2 ? 'amber' : 'blue';
+    const kind = {metadata: i18n.getMessage('Metadata'), form: i18n.getMessage('Form'), overlap: i18n.getMessage('Duplicates'), taxonomy: i18n.getMessage('Category'), service: i18n.getMessage('Service')}[o.kind];
+    const verified = o.evidence.some(e => e.verified);
+    return html`<li><button class="opp ${tone} ${hero ? 'hero' : ''}" aria-pressed=${this._opp?.id === o.id} @click=${() => this._pickOpp(o)}>
+      <span class="oi">${icon(o.kind)}</span>
+      <span class="ob"><span class="ot">${o.title}</span><span class="or">${o.reason}</span>
+        <span class="om">${kind} · ${verified ? i18n.getMessage('verified fact') : i18n.getMessage('heuristic, to review')}${o.requests ? ` · ${i18n.getMessage('{0} requests', fmt(o.requests))}` : ''}</span></span>
+      <span class="oa" aria-hidden="true">${icon('arrow')}</span></button></li>`;
+  }
+
+  _renderOpportunities() {
+    const list = this._oppList();
+    if (!list.length) return nothing;
+    const [first, ...rest] = list;
+    return html`<h3 class="sh">${i18n.getMessage('Best place to start')}</h3><ul class="opps">${this._oppCard(first, true)}</ul>
+      ${rest.length ? html`<h3 class="sh">${i18n.getMessage('More opportunities')}</h3><ul class="opps">${rest.map(o => this._oppCard(o))}</ul>` : nothing}
+      <p class="hint">${i18n.getMessage('Ranked by evidence strength, then recorded demand, then number of findings. No AI was used to build this list.')}</p>`;
+  }
+
+  _renderViews() {
+    const n = (v, f) => (v ? html`<b>${fmt(f(v))}</b>` : nothing);
+    const items = [
+      ['ai-readiness', 'metadata', n(this._readiness, v => v.discovery.affectedIds.length)],
+      ['form-intelligence', 'form', n(this._disc.form, v => v.discovery.affectedIds.length)],
+      ['overlap', 'overlap', n(this._disc.overlap, v => v.discovery.stats.groups)],
+      ['taxonomy', 'taxonomy', n(this._disc.taxonomy, v => v.discovery.affectedIds.length)],
+      ['csdm-alignment', 'service', n(this._disc.csdm, v => v.discovery.stats.candidates)]
+    ];
+    return html`<h3 class="sh">${i18n.getMessage('Look across the catalog')}</h3>
+      <div class="views">${items.map(([id, ic, c]) => html`<button class="view" @click=${() => this._openDiscovery(id)}><span class="vi">${icon(ic)}</span><span>${LABEL[id]()}</span>${c}</button>`)}</div>`;
+  }
+
+  _renderWhy() {
+    const o = this._opp;
+    if (!o || o.itemId !== this._item) return nothing;
+    return html`<section class="why" aria-label=${i18n.getMessage('Why this was suggested')}>
+      <b>${i18n.getMessage('Why this was suggested')}</b><p>${o.reason}</p>
+      <ul>${o.evidence.map(e => html`<li><span class="vtag ${e.verified ? 'v' : 'h'}">${e.verified ? i18n.getMessage('Verified') : i18n.getMessage('Heuristic')}</span>${e.text}</li>`)}</ul>
+      ${this._focusGroup() ? html`<p class="hint">${i18n.getMessage('The {0} items of this group are highlighted in the universe.', fmt(this._focusGroup().ids.length))}</p>` : nothing}
+    </section>`;
+  }
+
   _renderHome() {
     const n = this._item ? nodeIndex(this._model).get(this._item) : null;
     const hl = this._renderHighlight(this._hlView());
     if (!n) {
-      return html`<div class="focus-body"><h1>${i18n.getMessage('Catalog intelligence')}</h1>${hl}
-        <p>${i18n.getMessage('Click a dot in the universe to select an item. Its findings and the AI actions you can run on it appear here.')}</p>
-        <p class="hint">${i18n.getMessage('Or choose a view above to see a whole check across the catalog: Metadata, Forms, Overlap, Categories or Services.')}</p></div>`;
+      const cat = this._cat ? this._model.clusters.find(c => c.id === this._cat) : null;
+      return html`<div class="focus-body">${this._renderHeader(false)}${hl}
+        ${cat ? html`<section class="catctx"><b>${cat.title}</b><span>${i18n.getMessage('{0} items', fmt(cat.items.length))}</span><button class="chip" @click=${() => this._setCat(null)}>${i18n.getMessage('All categories')} ✕</button></section>` : nothing}
+        ${this._renderOpportunities()}
+        ${this._renderViews()}</div>`;
     }
     const acts = this._actions(n);
     const hot = acts.filter(x => x.signal);
     const rest = acts.filter(x => !x.signal);
-    const card = x => html`<li class="act ${x.signal ? 'signal' : ''}"><div class="at"><b>${x.title}</b> <span class="badge ai">${i18n.getMessage('AI')}</span></div>
+    const card = x => html`<li class="act ${x.signal ? 'signal' : ''}"><div class="at"><span class="ai-i">${icon(x.kind === 'improve' ? 'metadata' : x.kind === 'compare' ? 'overlap' : x.kind === 'category' ? 'taxonomy' : x.kind)}</span><b>${x.title}</b></div>
       ${x.evidence.map(t => html`<small>${t}</small>`)}
       <button class="primary" ?disabled=${x.disabled} @click=${() => this._runAction(x.kind)}>${x.button}</button></li>`;
     return html`<div class="focus-body">
+      ${this._renderHeader(true)}
       ${hl}
       ${this._renderTarget()}
+      ${this._renderWhy()}
       ${hot.length ? html`<h3 class="sh">${i18n.getMessage('Suggested next steps')}</h3><ul class="acts">${hot.map(card)}</ul>` : nothing}
       <h3 class="sh">${hot.length ? i18n.getMessage('Other AI actions') : i18n.getMessage('AI actions')}</h3>
       <ul class="acts">${rest.map(card)}</ul>

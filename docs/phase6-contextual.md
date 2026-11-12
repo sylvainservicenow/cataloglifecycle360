@@ -12,3 +12,9 @@ Journey: Select → Understand → Act → Review → Apply, all in Explore.
 ## Phase 7: interactive Home and deep-link contract
 
 `lib/app-state.js` `exploreLink({lens, d, cat, item, highlight})` is the one contract. `highlight` = `all | requested | complete | categories | service` (population highlights, resolved from the native model with the same predicates as the Home KPIs) or `metadata-gaps | form-gaps | overlap | taxonomy-gaps | service-candidates` (open the matching investigation). The highlight survives until cleared; opening an investigation replaces it. No sys_ids travel in URLs.
+
+## Phase 8: intelligent Explore
+
+- `components/cat-toolbar.js`: one toolbar (Home | Explore | Investigate, lenses, search). The universe's own bar is hidden (`hide-bar`); search text is passed back as `externalQuery`.
+- `lib/opportunities.js`: deterministic Top 10 over results already in memory. Ranking: evidence strength (verified fact 3, strong heuristic 2, weak heuristic 1), then recorded demand, then number of findings, then name. Round-robin across metadata / forms / duplicates / categories / services, one entry per item, at most two per category. No AI call, no score.
+- Panel states: A overview (Top 10 + views), B Home highlight (population explanation + opportunities inside it), C category focus, D item (findings, AI actions), E proposal, F return. Choosing an opportunity selects the item (and highlights its candidate group) without any AI call.

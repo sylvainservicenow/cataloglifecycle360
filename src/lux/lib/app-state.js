@@ -5,7 +5,7 @@
  */
 const KEY = 'cat360.state';
 const listeners = new Set();
-let state = {investigation: 'ai-readiness', itemId: null, categoryId: null};
+let state = {investigation: null, itemId: null, categoryId: null, highlight: '', lens: ''};
 
 try {
   const saved = typeof sessionStorage !== 'undefined' ? JSON.parse(sessionStorage.getItem(KEY) || 'null') : null;
@@ -40,10 +40,16 @@ export function destination(page, s = state) {
   if (page === 'explore') {
     if (s.itemId) q.set('item', s.itemId);
     if (s.investigation) q.set('d', s.investigation);
+    else if (s.highlight) q.set('highlight', s.highlight);
+    if (s.lens && s.lens !== 'overview') q.set('lens', s.lens);
     if (s.categoryId && s.categoryId !== '__none__') q.set('cat', s.categoryId);
     return `/explore${q.size ? `?${q}` : ''}`;
   }
-  return destination('explore', s);
+  // the Investigate route is the same shared workspace, opened on an investigation view
+  q.set('d', s.investigation || 'ai-readiness');
+  if (s.categoryId && s.categoryId !== '__none__') q.set('cat', s.categoryId);
+  if (s.itemId) q.set('item', s.itemId);
+  return `/investigate?${q}`;
 }
 
 /**

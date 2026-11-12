@@ -16,7 +16,7 @@ const NO_REQUESTS = '#C3CEDC';
 const INACTIVE_STROKE = '#64748B';
 const AMBER = '#F08A24';
 const SOFT = '#D5DEEA';
-const LENSES = [
+export const LENSES = [
   {id: 'overview', label: () => i18n.getMessage('Overview'), hint: () => i18n.getMessage('Colour by item type')},
   {id: 'quality', label: () => i18n.getMessage('Completeness'), hint: () => i18n.getMessage('Colour by metadata completeness')},
   {id: 'lifecycle', label: () => i18n.getMessage('Lifecycle'), hint: () => i18n.getMessage('Colour by creation year, inactive items hollow')},
@@ -51,6 +51,8 @@ export default class CatUniverse extends AIUXElement {
     legendItems: {attribute: false}, // [{color, label}] describing the markers
     focusId: {attribute: 'focus-id'}, // category (cluster) id to focus
     selectedId: {attribute: 'selected-id'}, // item sys_id to select
+    hideBar: {type: Boolean, attribute: 'hide-bar'}, // the host shows lenses and search in its own toolbar
+    externalQuery: {type: String}, // search text typed in the host toolbar: matching items are highlighted
     hideDetail: {type: Boolean, attribute: 'hide-detail'}, // the host shows the item inspector, so the built-in detail panel stays hidden
     lens: {type: String}, // lens to open with (e.g. 'quality'), set by the host page
     _model: {state: true},
@@ -885,6 +887,8 @@ export default class CatUniverse extends AIUXElement {
     this.selectedId = null;
     this.lens = '';
     this.hideDetail = false;
+    this.hideBar = false;
+    this.externalQuery = '';
     this._model = null;
     this._error = '';
     this._lens = 'overview';
@@ -1357,7 +1361,7 @@ export default class CatUniverse extends AIUXElement {
       return html`<div class="stage"><div class="state" role="status"><div><div class="orbit"></div>${i18n.getMessage('Mapping your catalog universe…')}</div></div></div>`;
     }
     return html`
-      ${this.compact || this.investigate ? nothing : this._renderBar()}
+      ${this.compact || this.investigate || this.hideBar ? nothing : this._renderBar()}
       <div class="stage">
         ${this._narrow ? html`<div class="state" role="status"><small>${i18n.getMessage('Not enough room here. Collapse the sidebar or widen the window.')}</small></div>` : nothing}
         ${guard([this._model, this._lens, this._gap, this._focus, this._selected, this.compact, this._matchKey(), this.markers], () => this._renderSvg())}
@@ -1369,6 +1373,7 @@ export default class CatUniverse extends AIUXElement {
   }
 
   _matchKey() {
+    if (this.externalQuery) return String(this.externalQuery).trim().toLowerCase();
     return this._searchOpen ? this._query.trim().toLowerCase() : '';
   }
 
