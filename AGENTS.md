@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for AI coding agents working in **CatalogIntelligence360**.
+Guidance for AI coding agents working in **Catalog Lifecycle 360 (scope `x_snc_catlife360`, repository `sylvainservicenow/cataloglifecycle360`)**.
 
 ## Start Here
 
@@ -64,5 +64,5 @@ AIUX_REPO_ROOT=/path/to/karuna AIUX_DEV_EXPERIENCE_FALLBACK=true node /path/to/k
 
 - The fallback flag enables instance-backed pages when no local page matches. Core UI has no local page registry, so it needs this lookup in development mode.
 - The full launcher starts both services behind one proxy. Do not run the Core UI-only launcher alongside it; both claim the proxy port.
-- Open the app under `/aiux/catalogintelligence360/home` and Core UI under `/aiux/ui/home` on the configured proxy origin. The SDK's instance deployment port is not necessarily the browser-facing AIUX port.
+- Open the app under `/aiux/cataloglifecycle360/overview` and Core UI under `/aiux/ui/home` on the configured proxy origin. The SDK's instance deployment port is not necessarily the browser-facing AIUX port.
 - `serve` selects instance-backed production mode and enforces the experience-approval list. An unapproved experience returns “Experience not available” before page ACL evaluation. Use normal development mode for local work or follow the production approval process; do not change ACLs or approval rules as a workaround.

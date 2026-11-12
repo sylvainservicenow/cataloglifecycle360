@@ -1,6 +1,6 @@
 # GEMINI.md
 
-This file provides guidance to Gemini CLI and Gemini-based coding agents when working with **CatalogIntelligence360**.
+This file provides guidance to Gemini CLI and Gemini-based coding agents when working with **Catalog Lifecycle 360 (scope `x_snc_catlife360`, repository `sylvainservicenow/cataloglifecycle360`)**.
 
 Use `AGENTS.md` as the canonical project and ServiceNow AIUX guidance. It contains the cross-agent rules, recommended skills, project conventions, and common commands for this application.
 

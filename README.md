@@ -1,16 +1,17 @@
-# Catalog Intelligence 360
+# Catalog Lifecycle 360
 
 A ServiceNow Lux Lab (AIUX) application that turns the native service catalog into a **Living Catalog Universe**: an animated, explorable map of catalog items, categories and service offerings, built only from real ServiceNow records.
 
-- **Scope:** `x_snc_catalogintel`
-- **App URL basename:** `catalogintelligence360`
-- **Landing page:** `/home`
+- **Scope:** `x_snc_catlife360`
+- **App URL basename:** `cataloglifecycle360`
+- **Landing page:** `/aiux/cataloglifecycle360/overview`
+- **Repository:** `sylvainservicenow/cataloglifecycle360` (independent fork of Catalog Intelligence 360, which is not modified by this project)
 
 ## Architecture
 
 - AIUX app (Lit components extending `AIUXElement`, Tailwind + DaisyUI) in `src/lux/`
   - `application.js`, `theme.js`: app shell and theme
-  - `pages/`: routes (`home`, `explore`)
+  - `pages/`: routes (`overview`, `explore`, `investigate`)
   - `components/cat-universe.js`: the Living Catalog Universe
   - `lib/catalog-data.js`: read-only catalog data layer and layout helpers
 - Read-only access to native tables (`sc_cat_item`, `sc_category`, `sc_cat_item_category`, `item_option_new`, `sc_req_item`, `service_offering`, `cmdb_rel_ci`, ...). No custom tables in the first milestone.
