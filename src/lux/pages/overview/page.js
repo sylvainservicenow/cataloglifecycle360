@@ -37,49 +37,75 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
       padding-bottom: 72px;
       container-type: inline-size;
     }
+    /* command centre: the universe is the centrepiece, KPIs and the AI entry point sit beside it */
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+      gap: 16px;
+      height: clamp(340px, calc(100dvh - 470px), 560px);
+    }
     .hero-universe {
-      height: clamp(170px, 25vh, 250px);
-      cursor: pointer;
       position: relative;
-      transition: box-shadow 0.25s ease, border-color 0.25s ease;
+      min-height: 0;
+      border-radius: 1.75rem;
+      overflow: hidden;
+      cursor: pointer;
+      transition: box-shadow 0.3s ease, transform 0.3s ease;
+    }
+    .hero-universe cat-universe {
+      display: block;
+      height: 100%;
     }
     .hero-universe:hover,
     .hero-universe:focus-within {
-      box-shadow: 0 10px 34px rgba(47, 111, 237, 0.22);
-      border-color: rgba(47, 111, 237, 0.55);
+      box-shadow: 0 16px 44px rgba(47, 111, 237, 0.24);
+      transform: translateY(-2px);
+    }
+    .side {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
     }
     .grid {
       display: grid;
       gap: 12px;
-      grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
     }
     .grid.kpis {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-    }
-    @container (max-width: 760px) {
-      .grid.kpis {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
+      flex: 1;
+      min-height: 0;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-auto-rows: minmax(0, 1fr);
     }
     .grid.four {
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
     @container (max-width: 1000px) {
+      .hero {
+        grid-template-columns: minmax(0, 1fr);
+        height: auto;
+      }
+      .hero-universe {
+        height: 360px;
+      }
       .grid.four {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
     @container (max-width: 560px) {
-      .grid.four,
-      .grid.kpis {
+      .grid.four {
         grid-template-columns: minmax(0, 1fr);
+      }
+      .hero-universe {
+        height: 300px;
       }
     }
     h2.sec {
       margin: 0;
-      font-size: 1.1rem;
-      color: #032d42;
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #4d4c4a;
     }
     /* every tile is one link: the whole surface is the target */
     a.tile {
@@ -88,21 +114,32 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
       position: relative;
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      padding: 16px 18px;
-      border-radius: 1.25rem;
-      border: 1px solid color-mix(in srgb, var(--tone) 22%, #ffffff);
-      border-left: 4px solid var(--tone);
-      background: linear-gradient(160deg, var(--tint), #ffffff 70%);
-      box-shadow: 0 1px 3px rgba(3, 45, 66, 0.07);
+      justify-content: center;
+      gap: 2px;
+      padding: 14px 18px;
+      border-radius: 1.4rem;
+      border: 1px solid color-mix(in srgb, var(--tone) 20%, #ffffff);
+      background: linear-gradient(155deg, var(--tint), #ffffff 75%);
+      box-shadow: 0 1px 3px rgba(3, 45, 66, 0.06);
       color: #1b1b1b;
       text-decoration: none;
-      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
       min-width: 0;
+      overflow: hidden;
+    }
+    a.tile::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 16%;
+      bottom: 16%;
+      width: 4px;
+      border-radius: 0 4px 4px 0;
+      background: var(--tone);
     }
     a.tile:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 22px rgba(3, 45, 66, 0.14);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 28px rgba(3, 45, 66, 0.15);
       border-color: color-mix(in srgb, var(--tone) 55%, #ffffff);
     }
     a.tile:focus-visible,
@@ -129,57 +166,60 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
     .eyebrow {
       display: flex;
       align-items: center;
-      gap: 8px;
-      font-size: 0.72rem;
-      letter-spacing: 0.07em;
-      text-transform: uppercase;
-      color: #4d4c4a;
+      gap: 7px;
+      font-size: 0.8rem;
       font-weight: 600;
+      color: #3b3a38;
     }
     .eyebrow svg {
-      width: 18px;
-      height: 18px;
+      width: 17px;
+      height: 17px;
       flex: none;
       color: var(--tone);
     }
     .num {
-      font-size: 2.6rem;
+      font-size: 2.5rem;
       line-height: 1.05;
       font-weight: 700;
       color: var(--tone);
       font-variant-numeric: tabular-nums;
+      letter-spacing: -0.01em;
     }
-    .kpis a.tile {
-      padding: 10px 14px;
-      gap: 0;
-      flex-direction: row;
-      align-items: center;
-      justify-content: space-between;
+    .kpis a.tile .num {
+      font-size: clamp(2rem, 4.2vw, 3rem);
+      order: 1;
     }
-    .kpis .num {
-      font-size: 1.7rem;
-    }
-    .kpis .eyebrow {
+    .kpis a.tile .eyebrow {
       order: 2;
-      max-width: 60%;
-      text-align: right;
-      text-transform: none;
-      letter-spacing: 0;
-      font-size: 0.8rem;
-      justify-content: flex-end;
+      font-size: 0.86rem;
+      align-items: flex-start;
     }
     .opps a.tile {
-      padding: 12px 14px;
+      padding: 16px 18px 16px 20px;
+      gap: 4px;
+      justify-content: flex-start;
+    }
+    .opps .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      font-size: 0.72rem;
+      color: #4d4c4a;
     }
     .opps .num {
-      font-size: 2.1rem;
+      font-size: 2.4rem;
+    }
+    .txt {
+      margin: 0;
+      font-size: 0.86rem;
+      color: #3b3a38;
+      line-height: 1.4;
     }
     .arrow {
       position: absolute;
-      top: 10px;
-      right: 12px;
+      top: 12px;
+      right: 14px;
       color: var(--tone);
-      opacity: 0.55;
+      opacity: 0.5;
       transition: opacity 0.2s ease, transform 0.2s ease;
     }
     a.tile:hover .arrow,
@@ -187,28 +227,79 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
       opacity: 1;
       transform: translateX(3px);
     }
-    .txt {
+    /* the AI entry point */
+    a.ai {
+      display: grid;
+      gap: 6px;
+      padding: 16px 18px;
+      border-radius: 1.4rem;
+      color: #ffffff;
+      text-decoration: none;
+      background: linear-gradient(135deg, #3b2a8f 0%, #2f6fed 100%);
+      box-shadow: 0 10px 26px rgba(59, 42, 143, 0.28);
+      transition: transform 0.22s ease, box-shadow 0.22s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    a.ai::after {
+      content: '';
+      position: absolute;
+      right: -30px;
+      top: -40px;
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 70%);
+      pointer-events: none;
+    }
+    a.ai:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 16px 34px rgba(59, 42, 143, 0.36);
+    }
+    a.ai:focus-visible {
+      outline: 3px solid #2f6fed;
+      outline-offset: 3px;
+    }
+    .ai-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 1rem;
+    }
+    .ai-head svg {
+      width: 20px;
+      height: 20px;
+    }
+    .ai p {
       margin: 0;
       font-size: 0.86rem;
-      color: #4d4c4a;
       line-height: 1.4;
+      color: rgba(255, 255, 255, 0.92);
+    }
+    .ai-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .ai-chips span {
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.18);
     }
     .tile.wait {
       display: flex;
       flex-direction: column;
       gap: 4px;
-      padding: 14px 16px;
+      padding: 16px 18px;
       min-height: 96px;
-      border-radius: 1.25rem;
+      border-radius: 1.4rem;
       border: 1px dashed #c3cedc;
-      cursor: default;
-      border-left-color: #c3cedc;
       background: #fafbfc;
-    }
-    .hint {
-      margin: 0;
-      font-size: 0.8rem;
-      color: #4d4c4a;
+      cursor: default;
     }
     @media (prefers-reduced-motion: no-preference) {
       .rise {
@@ -224,7 +315,11 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
     @media (prefers-reduced-motion: reduce) {
       a.tile,
       a.tile:hover,
-      .hero-universe {
+      a.ai,
+      a.ai:hover,
+      .hero-universe,
+      .hero-universe:hover,
+      .arrow {
         transition: none;
         transform: none;
       }
@@ -311,6 +406,15 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
     return this._link(tone, target, html`<span class="num">${value}</span><span class="eyebrow">${this._icon(icon)}${label}</span><span class="arrow" aria-hidden="true">→</span>`, `${value} ${label}`);
   }
 
+  /** The AI entry point: opens Explore, whose intelligence panel already lists the best opportunities and one-click AI actions. */
+  _renderAi() {
+    return html`<a class="ai rise" href=${`${this._base}${exploreLink({})}`} aria-label=${i18n.getMessage('AI intelligence. Open Explore to see what deserves attention and let AI propose improvements.')} @click=${e => this._tile(e, exploreLink({}))}>
+      <span class="ai-head">${this._icon('spark')}${i18n.getMessage('AI intelligence')}</span>
+      <p>${i18n.getMessage('Select any item and AI reads its real records, then proposes better descriptions, form questions, categories and service links for you to review.')}</p>
+      <span class="ai-chips" aria-hidden="true"><span>${i18n.getMessage('Descriptions')}</span><span>${i18n.getMessage('Forms')}</span><span>${i18n.getMessage('Duplicates')}</span><span>${i18n.getMessage('Categories')}</span><span>${i18n.getMessage('Services')}</span></span>
+    </a>`;
+  }
+
   /**
    * The four most relevant opportunities, chosen deterministically from the five engines:
    * evidence strength first (3 = a direct check of a record field or link, 2 = a text-similarity
@@ -354,25 +458,29 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
     const s = this._stats;
     const f = n => new Intl.NumberFormat().format(n);
     return html`
-      <div class="mx-auto flex max-w-7xl flex-col gap-3">
+      <div class="mx-auto flex max-w-7xl flex-col gap-4">
         <cat-appnav current="overview"></cat-appnav>
         <section class="rise flex flex-col gap-1">
           <p class="font-mono text-xs uppercase tracking-wide text-primary-900">${i18n.getMessage('Catalog Intelligence 360')}</p>
           <h1 class="max-w-3xl break-words text-3xl font-bold text-text-primary">${i18n.getMessage('Your service catalog, as a living universe.')}</h1>
         </section>
 
-        <section class="hero-universe overflow-hidden rounded-3xl border border-base-300 shadow-sm" aria-label=${i18n.getMessage('Catalog universe preview. Select to open Explore.')}>
-          <cat-universe compact @cat-universe:enter=${this._enter}></cat-universe>
+        <section class="hero" aria-label=${i18n.getMessage('Catalog overview')}>
+          <div class="hero-universe" role="group" aria-label=${i18n.getMessage('Catalog universe preview. Select to open Explore.')}>
+            <cat-universe compact @cat-universe:enter=${this._enter}></cat-universe>
+          </div>
+          <div class="side">
+            ${s
+              ? html`<section aria-label=${i18n.getMessage('Catalog at a glance')} class="grid kpis">
+                  ${this._kpi('blue', 'grid', f(s.items), i18n.getMessage('catalog items'), exploreLink({highlight: 'all', lens: 'overview'}))}
+                  ${this._kpi('blue', 'layers', f(s.populatedCategories), i18n.getMessage('categories in use'), exploreLink({highlight: 'categories', lens: 'overview'}))}
+                  ${this._kpi('green', 'check', f(s.complete), i18n.getMessage('items with complete metadata'), exploreLink({highlight: 'complete', lens: 'quality'}))}
+                  ${this._kpi('blue', 'pulse', f(s.requestedItems), i18n.getMessage('items requested'), exploreLink({highlight: 'requested', lens: 'demand'}))}
+                </section>`
+              : nothing}
+            ${this._renderAi()}
+          </div>
         </section>
-
-        ${s
-          ? html`<section aria-label=${i18n.getMessage('Catalog at a glance')} class="grid kpis">
-              ${this._kpi('blue', 'grid', f(s.items), i18n.getMessage('catalog items'), exploreLink({highlight: 'all', lens: 'overview'}))}
-              ${this._kpi('blue', 'layers', f(s.populatedCategories), i18n.getMessage('categories in use'), exploreLink({highlight: 'categories', lens: 'overview'}))}
-              ${this._kpi('green', 'check', f(s.complete), i18n.getMessage('items with complete metadata'), exploreLink({highlight: 'complete', lens: 'quality'}))}
-              ${this._kpi('blue', 'pulse', f(s.requestedItems), i18n.getMessage('items requested'), exploreLink({highlight: 'requested', lens: 'demand'}))}
-            </section>`
-          : nothing}
 
         ${this._opps ? this._renderOpportunities() : nothing}
       </div>
