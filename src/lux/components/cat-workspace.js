@@ -1,6 +1,5 @@
 import {html, css, nothing, isServer} from 'lit';
-import {customElement} from 'lit/decorators.js';
-import {AIUXElement, withWidgetContext} from '@servicenow/aiux/aiux-components-core';
+import {withWidgetContext} from '@servicenow/aiux/aiux-components-core';
 import {i18n} from '@servicenow/aiux/aiux-services';
 import {keyed} from 'lit/directives/keyed.js';
 import {applyPersisted, CRITERIA, classLabel, clearItemVariables, loadCatalog, loadItemVariables, loadTextFacts, loadVariableStats} from '../lib/catalog-data.js';
@@ -45,8 +44,8 @@ const KIND_COLOR = {exact: '#E5484D', near: '#F2812F', related: '#F2B134'};
 const ACTION_D = {improve: 'ai-readiness', form: 'form-intelligence', category: 'taxonomy', service: 'csdm-alignment', compare: 'overlap'};
 const WB_MODE = {'form-intelligence': 'form', overlap: 'overlap', taxonomy: 'category', 'csdm-alignment': 'service'};
 
-@customElement('x-snc-catalogintel-workspace')
-export default class CatWorkspace extends withWidgetContext(AIUXElement) {
+/** The shared Explore workspace as a mixin: each route page extends it directly, so the build recognises it as a page. */
+export const withWorkspace = Base => class Workspace extends withWidgetContext(Base) {
   static aiContext = {
     description: 'An investigation workspace showing catalog items affected by one investigation (metadata and AI readiness, form intelligence, duplicate and overlap, taxonomy, service alignment) in the catalog universe',
     bestFor: 'When the user wants to investigate catalog quality, find confusing forms, potential duplicates, poorly categorised items or service alignment, or prepare an improvement'
@@ -2483,4 +2482,4 @@ export default class CatWorkspace extends withWidgetContext(AIUXElement) {
       <p class="hint">${i18n.getMessage('An action reads this item’s real records and asks the AI once. Nothing is saved until you review the result and confirm.')}</p>
     </div>`;
   }
-}
+};
