@@ -7,6 +7,7 @@ import {ApplyError, readMany, readOne, write} from '../../lib/apply-helpers.js';
 
 const {discoverable, name, description, bestFor, server} = decorators;
 
+const TYPE_NAME = () => ({'6': i18n.getMessage('Single-line text'), '2': i18n.getMessage('Multi-line text'), '1': i18n.getMessage('Yes / No'), '5': i18n.getMessage('Select box'), '7': i18n.getMessage('Checkbox'), '9': i18n.getMessage('Date')});
 const FIT = () => ({strong: i18n.getMessage('Strong fit'), plausible: i18n.getMessage('Plausible'), weak: i18n.getMessage('Weak fit')});
 const VERDICT = () => ({
   'likely-duplicate': i18n.getMessage('Likely duplicates'),
@@ -34,9 +35,10 @@ const ACTION = () => ({
 @server('./workbench-server.js')
 export default class CatWorkbench extends AIUXWidgetElement {
   static properties = {
-    mode: {type: String}, // form | overlap | category | service
+    mode: {type: String}, // form | overlap | category | service | starter
     context: {attribute: false},
     autostart: {attribute: false}, // start the assessment as soon as the context is valid (set by the host after an explicit click)
+    _starter: {state: true},
     _phase: {state: true}, // ready | generating | review | applying | done | error
     _res: {state: true},
     _edit: {state: true},
@@ -163,7 +165,9 @@ export default class CatWorkbench extends AIUXWidgetElement {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
-    textarea {
+    textarea,
+    input[type='text'],
+    select {
       width: 100%;
       box-sizing: border-box;
       min-height: 56px;
@@ -225,6 +229,7 @@ export default class CatWorkbench extends AIUXWidgetElement {
     }
     button:focus-visible,
     textarea:focus-visible,
+    select:focus-visible,
     input:focus-visible {
       outline: 3px solid #2f6fed;
       outline-offset: 2px;
@@ -291,6 +296,8 @@ export default class CatWorkbench extends AIUXWidgetElement {
     this._errKind = '';
     this._detail = null;
     this._result = null;
+    this._starter = [];
+    this._baseline = null;
   }
 
   willUpdate(changed) {
@@ -305,12 +312,17 @@ export default class CatWorkbench extends AIUXWidgetElement {
   async _generate() {
     this._phase = 'generating';
     try {
+      // for a starter form, remember how many questions the item has now so Apply can detect a change in between
+      if (this.mode === 'starter') this._baseline = (await readMany('item_option_new', `cat_item=${this.context.item.id}`, 'sys_id').catch(() => null))?.length ?? null;
       const r = await this.server.get({kind: this.mode, context: this.context});
       if (r?.isError) {
         this._fail(r.errorKind || 'ai', r.errorMessage || i18n.getMessage('The request failed.'));
         return;
       }
       this._res = r;
+      if (this.mode === 'starter') {
+        this._starter = (r.questions || []).map((q, i) => ({key: `q${i}`, label: q.label, type: q.type, mandatory: q.required, help: q.help || '', choices: (q.choices || []).join('\n'), reason: q.reason}));
+      }
       const rows = this._rows(r);
       this._edit = Object.fromEntries(rows.map(x => [x.key, x.proposed]));
       this._dec = Object.fromEntries(rows.map(x => [x.key, 'accept']));
@@ -331,6 +343,7 @@ export default class CatWorkbench extends AIUXWidgetElement {
   _rows(r = this._res) {
     const c = this.context;
     if (!r) return [];
+    if (this.mode === 'starter') return this._starter;
     if (this.mode === 'form') {
       return (r.variables || []).flatMap(p => {
         const v = c.variables.find(x => x.id === p.id);
@@ -355,10 +368,30 @@ export default class CatWorkbench extends AIUXWidgetElement {
 
   _changes() {
     return this._rows().filter(r => {
+      if (this.mode === 'starter') return this._dec[r.key] === 'accept' && r.label.trim();
       if (this._dec[r.key] !== 'accept') return false;
       if (this.mode === 'form') return (this._edit[r.key] || '').trim() && (this._edit[r.key] || '').trim() !== r.current;
       return !r.present;
     });
+  }
+
+  /** A starter question that cannot be created as it stands: too long, or a select box without at least two choices. */
+  _starterProblem() {
+    if (this.mode !== 'starter') return '';
+    for (const r of this._changes()) {
+      if (r.label.trim().length > 120) return i18n.getMessage('A question label is much longer than is useful. Shorten it before applying.');
+      if (r.type === '5' && this._choiceList(r).length < 2) return i18n.getMessage('A select box needs at least two choices.');
+    }
+    return '';
+  }
+
+  _choiceList(r) {
+    return r.choices.split('\n').map(x => x.trim()).filter(Boolean);
+  }
+
+  _editQ(key, patch) {
+    this._starter = this._starter.map(r => (r.key === key ? {...r, ...patch} : r));
+    this._confirm = false;
   }
 
   _tooLong() {
@@ -371,7 +404,7 @@ export default class CatWorkbench extends AIUXWidgetElement {
     if (!changes.length || this._confirm !== true) return;
     this._phase = 'applying';
     try {
-      const done = this.mode === 'form' ? await this._applyForm(changes) : await this._applyLink(changes);
+      const done = this.mode === 'form' ? await this._applyForm(changes) : this.mode === 'starter' ? await this._applyStarter(changes) : await this._applyLink(changes);
       this._result = done;
       this._phase = 'done';
       this.dispatchEvent(new CustomEvent('cat-workbench:applied', {detail: {mode: this.mode, itemId: this.context.item.id, verified: done.verified, ...done.payload}, bubbles: true, composed: true}));
@@ -404,6 +437,41 @@ export default class CatWorkbench extends AIUXWidgetElement {
       });
     }
     return {verified: results.every(r => r.verified), results, payload: {changed: results.map(r => ({id: r.variable.id, field: r.field, value: r.to}))}};
+  }
+
+  /** Create each approved question as a native variable on the item, then its choices, and read every record back. */
+  async _applyStarter(changes) {
+    const itemId = this.context.item.id;
+    const itemUrl = `/api/now/table/sc_cat_item/${itemId}`;
+    const nowCount = (await readMany('item_option_new', `cat_item=${itemId}`, 'sys_id')).length;
+    if (this._baseline != null && nowCount !== this._baseline) throw new ApplyError(i18n.getMessage('This item\'s questions changed after these suggestions were generated. Nothing was created. Generate again.'), {kind: 'stale', step: 'read'});
+    const taken = new Set((await readMany('item_option_new', `cat_item=${itemId}`, 'name')).map(x => x.name));
+    const slug = (s, max) => String(s).toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, max);
+    const results = [];
+    let n = 0;
+    for (const c of changes) {
+      n++;
+      let name = slug(c.label, 36) || `question_${n}`;
+      if (/^[0-9]/.test(name)) name = `q_${name}`;
+      for (let k = 2; taken.has(name); k++) name = `${slug(c.label, 32) || 'question'}_${k}`;
+      taken.add(name);
+      const body = {cat_item: itemId, name, question_text: c.label.trim(), type: c.type, mandatory: !!c.mandatory, order: String(n * 100), active: true};
+      if (c.help.trim()) body.help_text = c.help.trim();
+      const made = await write('POST', '/api/now/table/item_option_new', body, itemUrl);
+      const id = made?.sys_id;
+      if (!id) throw new ApplyError(i18n.getMessage('The platform did not return the new question. Nothing more was created.'), {kind: 'failed', step: 'write'});
+      const choices = c.type === '5' ? this._choiceList(c) : [];
+      let k = 0;
+      for (const text of choices) {
+        k++;
+        await write('POST', '/api/now/table/question_choice', {question: id, text, value: slug(text, 40) || String(k), order: String(k * 100)}, itemUrl);
+      }
+      const back = await readOne(`/api/now/table/item_option_new/${id}`, 'question_text,type,cat_item,mandatory');
+      const backChoices = choices.length ? await readMany('question_choice', `question=${id}`, 'text') : [];
+      const verified = plain(back.question_text) === c.label.trim() && String(back.type) === c.type && String(back.cat_item) === itemId && backChoices.length === choices.length;
+      results.push({key: c.key, id, name, label: c.label.trim(), typeName: TYPE_NAME()[c.type], choices: backChoices.length, verified});
+    }
+    return {verified: results.every(r => r.verified), results, payload: {created: results.map(r => r.id)}};
   }
 
   async _applyLink(changes) {
@@ -448,16 +516,17 @@ export default class CatWorkbench extends AIUXWidgetElement {
       form: i18n.getMessage('The AI will propose clearer labels and help text for the flagged questions of this item. Behaviour, types, choices, requirements and scripts are never touched.'),
       overlap: i18n.getMessage('The AI will compare these items using their descriptions, categories and form questions. Similar names alone are not treated as proof of duplication. Nothing is merged, deactivated or deleted.'),
       category: i18n.getMessage('The AI will choose among the real, existing categories most likely to suit this item. It will not invent categories, and adding one never removes another.'),
-      service: i18n.getMessage('The AI will judge whether this item delivers one of the candidate service offerings. “No clear match” and “not enough information” are valid answers.')
+      service: i18n.getMessage('The AI will judge whether this item delivers one of the candidate service offerings. “No clear match” and “not enough information” are valid answers.'),
+      starter: i18n.getMessage('This item has no input questions. AI can suggest a starter form based on its name, descriptions and catalog context.')
     }[this.mode];
-    const count = this.mode === 'form' ? c.variables.length : this.mode === 'overlap' ? c.items.length : this.mode === 'category' ? c.candidates.length : c.candidates.length;
-    const unit = {form: i18n.getMessage('question(s) to improve'), overlap: i18n.getMessage('items to compare'), category: i18n.getMessage('existing categories considered'), service: i18n.getMessage('offerings considered')}[this.mode];
-    return html`<div class="eyebrow">${i18n.getMessage('Improvement workbench')}</div>
+    const count = this.mode === 'starter' ? 1 : this.mode === 'form' ? c.variables.length : this.mode === 'overlap' ? c.items.length : c.candidates.length;
+    const unit = {form: i18n.getMessage('question(s) to improve'), overlap: i18n.getMessage('items to compare'), category: i18n.getMessage('existing categories considered'), service: i18n.getMessage('offerings considered'), starter: i18n.getMessage('item described to the AI')}[this.mode];
+    return html`<div class="eyebrow">${this.mode === 'starter' ? i18n.getMessage('No questions configured') : i18n.getMessage('Improvement workbench')}</div>
       <h2>${c.item?.name || c.title}</h2>
       <p>${intro}</p>
       <p class="muted"><span class="badge ai">${i18n.getMessage('AI step')}</span> ${count} ${unit}. ${i18n.getMessage('One model call. Nothing is saved until you approve.')}</p>
       ${this.mode === 'form' && c.variables.some(v => v.shared > 1 || v.fromSet) ? html`<div class="note">${i18n.getMessage('Some of these questions belong to a shared variable set. Changing one changes it on every item that uses the set.')}</div>` : nothing}
-      <div class="actions"><button class="ai" @click=${this._generate}>${{form: i18n.getMessage('Generate better wording'), overlap: i18n.getMessage('Compare with AI'), category: i18n.getMessage('Recommend a category'), service: i18n.getMessage('Check service alignment')}[this.mode]}</button></div>`;
+      <div class="actions"><button class="ai" @click=${this._generate}>${{form: i18n.getMessage('Generate better wording'), overlap: i18n.getMessage('Compare with AI'), category: i18n.getMessage('Recommend a category'), service: i18n.getMessage('Check service alignment'), starter: i18n.getMessage('Suggest questions with AI')}[this.mode]}</button></div>`;
   }
 
   _renderReview() {
@@ -468,6 +537,7 @@ export default class CatWorkbench extends AIUXWidgetElement {
       <h2>${this.context.item?.name || this.context.title}</h2>
       ${r.summary ? html`<p>${r.summary}</p>` : nothing}
       ${this.mode === 'overlap' ? this._renderOverlap(r) : this._renderRows()}
+      ${this.mode === 'starter' && r.assumptions?.length ? html`<div class="note" role="status"><b>${i18n.getMessage('Assumptions to confirm')}</b><ul>${r.assumptions.map(a => html`<li>${a}</li>`)}</ul></div>` : nothing}
       ${this.mode === 'overlap' ? nothing : this._renderApprove(changes, bad)}`;
   }
 
@@ -479,6 +549,7 @@ export default class CatWorkbench extends AIUXWidgetElement {
   _renderRows() {
     const rows = this._rows();
     const r = this._res;
+    if (this.mode === 'starter') return this._renderStarterRows(rows);
     if (!rows.length) {
       return html`<div class="note info" role="status">${this.mode === 'form' ? i18n.getMessage('The AI found nothing it could improve without guessing.') : this.mode === 'service' ? i18n.getMessage('The AI did not find a clear match. That is a valid result: not every item belongs to an offering.') : i18n.getMessage('The AI did not find a suitable existing category.')}</div>
         ${r.newCategoryProposal ? html`<div class="note">${i18n.getMessage('Proposal only, not an existing category: “{0}”. {1}', r.newCategoryProposal.name, r.newCategoryProposal.reason)}</div>` : nothing}
@@ -508,9 +579,40 @@ export default class CatWorkbench extends AIUXWidgetElement {
       ${r.newCategoryProposal ? html`<div class="note">${i18n.getMessage('Proposal only, not an existing category: “{0}”. {1}', r.newCategoryProposal.name, r.newCategoryProposal.reason)}</div>` : nothing}`;
   }
 
+  _renderStarterRows(rows) {
+    if (!rows.length) return html`<div class="note info" role="status">${i18n.getMessage('The AI did not find enough in this item’s name and descriptions to suggest questions without guessing. That is a valid result: add a clearer description first, or build the form by hand.')}</div>`;
+    return html`${rows.map(row => {
+      const off = this._dec[row.key] === 'reject';
+      return html`<div class="row ${off ? 'off' : ''}">
+        <div class="actions"><b>${i18n.getMessage('Question {0}', row.key.slice(1) * 1 + 1)}</b><span class="badge ai">${i18n.getMessage('AI-suggested')}</span></div>
+        <label class="muted">${i18n.getMessage('Label')}<input type="text" .value=${row.label} ?disabled=${off} @input=${e => this._editQ(row.key, {label: e.target.value})}></label>
+        <div class="cols"><label class="muted">${i18n.getMessage('Answer type')}
+            <select ?disabled=${off} @change=${e => this._editQ(row.key, {type: e.target.value})}>${Object.entries(TYPE_NAME()).map(([k, v]) => html`<option value=${k} ?selected=${row.type === k}>${v}</option>`)}</select></label>
+          <label class="check"><input type="checkbox" .checked=${row.mandatory} ?disabled=${off} @change=${e => this._editQ(row.key, {mandatory: e.target.checked})}><span>${i18n.getMessage('Required')}</span></label></div>
+        <label class="muted">${i18n.getMessage('Help text (optional)')}<textarea .value=${row.help} ?disabled=${off} @input=${e => this._editQ(row.key, {help: e.target.value})}></textarea></label>
+        ${row.type === '5' ? html`<label class="muted">${i18n.getMessage('Choices, one per line')}<textarea .value=${row.choices} ?disabled=${off} @input=${e => this._editQ(row.key, {choices: e.target.value})}></textarea></label>` : nothing}
+        <p class="muted">${i18n.getMessage('Why: {0}', row.reason)}</p>
+        <div class="actions"><button class="yes" aria-pressed=${this._dec[row.key] === 'accept'} @click=${() => this._decide(row.key, 'accept')}>${i18n.getMessage('Accept')}</button>
+          <button class="no" aria-pressed=${off} @click=${() => this._decide(row.key, 'reject')}>${i18n.getMessage('Reject')}</button></div>
+      </div>`;
+    })}`;
+  }
+
   _renderApprove(changes, bad) {
     const rows = this._rows();
     if (!rows.length) return nothing;
+    if (this.mode === 'starter') {
+      const problem = this._starterProblem();
+      return html`<h3>${i18n.getMessage('Records that would be created')}</h3>
+        ${changes.length ? html`<ul>${changes.map(c => html`<li>${i18n.getMessage('A {0} question “{1}” on this item', TYPE_NAME()[c.type], c.label.trim())}${c.mandatory ? ` · ${i18n.getMessage('required')}` : ''}${c.type === '5' ? ` · ${i18n.getMessage('{0} choices', String(this._choiceList(c).length))}` : ''}</li>`)}</ul>
+          <p class="muted">${i18n.getMessage('Each is a new native catalog variable (and its choices) created as you. Existing questions are not changed.')}</p>`
+          : html`<p class="muted">${i18n.getMessage('Nothing accepted yet.')}</p>`}
+        ${problem ? html`<div class="note bad" role="alert">${problem}</div>` : nothing}
+        <label class="check"><input type="checkbox" .checked=${this._confirm} ?disabled=${!changes.length || !!problem} @change=${e => (this._confirm = e.target.checked)}>
+          <span>${i18n.getMessage('I have reviewed these questions and approve creating them as native records.')}</span></label>
+        <div class="actions"><button class="primary" ?disabled=${!changes.length || !this._confirm || !!problem} @click=${this._apply}>${i18n.getMessage('Create approved questions')}</button>
+          <button @click=${this._generate}>${i18n.getMessage('Regenerate')}</button></div>`;
+    }
     return html`<h3>${i18n.getMessage('Changes awaiting your approval')}</h3>
       ${changes.length ? html`<ul>${changes.map(c => this.mode === 'form'
           ? html`<li><b>${c.variable.label || c.variable.name}</b> · ${c.field === 'label' ? i18n.getMessage('label') : i18n.getMessage('help text')}: “${c.current || i18n.getMessage('Not provided')}” → “${(this._edit[c.key] || '').trim()}”</li>`
@@ -545,7 +647,9 @@ export default class CatWorkbench extends AIUXWidgetElement {
     return html`${r.verified
         ? html`<div class="note ok" role="status"><b>${i18n.getMessage('Saved and verified.')}</b> ${i18n.getMessage('Each change was read back from the database and matches what you approved.')}</div>`
         : html`<div class="note bad" role="alert"><b>${i18n.getMessage('Saved, but a value read back differs from what you approved.')}</b> ${i18n.getMessage('Review the record before relying on it.')}</div>`}
-      <ul>${r.results.map(x => this.mode === 'form'
+      <ul>${r.results.map(x => this.mode === 'starter'
+        ? html`<li>${x.verified ? '✓' : '✕'} <b>${x.label}</b> · ${x.typeName}${x.choices ? ` · ${i18n.getMessage('{0} choices', String(x.choices))}` : ''}</li>`
+        : this.mode === 'form'
         ? html`<li>${x.verified ? '✓' : '✕'} <b>${x.variable.label || x.variable.name}</b> · ${x.field === 'label' ? i18n.getMessage('label') : i18n.getMessage('help text')}: “${x.to}”</li>`
         : html`<li>${x.verified ? '✓' : '✕'} ${this.mode === 'category' ? i18n.getMessage('Category “{0}” is now linked', x.title) : i18n.getMessage('Service offering “{0}” is now linked', x.title)}</li>`)}</ul>
       <div class="actions"><button class="primary" @click=${() => this.dispatchEvent(new CustomEvent('cat-workbench:close', {bubbles: true, composed: true}))}>${i18n.getMessage('Back to the item')}</button>

@@ -45,11 +45,8 @@ export function destination(page, s = state) {
     if (s.categoryId && s.categoryId !== '__none__') q.set('cat', s.categoryId);
     return `/explore${q.size ? `?${q}` : ''}`;
   }
-  // the Investigate route is the same shared workspace, opened on an investigation view
-  q.set('d', s.investigation || 'ai-readiness');
-  if (s.categoryId && s.categoryId !== '__none__') q.set('cat', s.categoryId);
-  if (s.itemId) q.set('item', s.itemId);
-  return `/investigate?${q}`;
+  // Investigate is a mode inside Explore
+  return destination('explore', s);
 }
 
 /**

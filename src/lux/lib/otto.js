@@ -116,6 +116,13 @@ export const OTTO_TOOLS = {
       return open(this, 'ai-readiness', args, {needsItem: true, workspace: true});
     }
   },
+  suggest_form_questions: {
+    description: `Suggest a starter set of form questions with AI for ONE specific catalog item that has no input questions (or review its questions when it has some). Opens the form assessment for that item in Catalog Intelligence 360 and starts it; the person reviews, edits and approves before anything is created. Requires an item: pass its sys_id, or omit it to use the selected item.${BOUNDARY}`,
+    arguments: ITEM_ARGS,
+    definition: async function (args = {}) {
+      return open(this, 'form-intelligence', args, {needsItem: true, workspace: true});
+    }
+  },
   open_investigation: {
     description: `Open one of the Catalog Intelligence 360 investigations by id: ai-readiness (metadata quality), form-intelligence, overlap (duplicates), taxonomy (categories) or csdm-alignment (service offerings).${BOUNDARY}`,
     arguments: [{name: 'id', description: 'ai-readiness, form-intelligence, overlap, taxonomy or csdm-alignment', type: 'string', required: true}, ...ITEM_ARGS.slice(0, 1), CAT_ARG],

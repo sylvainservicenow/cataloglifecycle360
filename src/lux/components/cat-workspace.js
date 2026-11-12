@@ -5,7 +5,7 @@ import {keyed} from 'lit/directives/keyed.js';
 import {applyPersisted, CRITERIA, classLabel, clearItemVariables, loadCatalog, loadItemVariables, loadTextFacts, loadVariableStats} from '../lib/catalog-data.js';
 import {classBreakdown, distribution, nodeIndex, scopedIds} from '../lib/discovery.js';
 import {assessVariables, buildAiReadiness, DIMENSIONS, failedCount} from '../lib/investigations/ai-readiness.js';
-import {buildFormIntelligence, isInput, loadAllVariables, loadChoices, patchVariables} from '../lib/investigations/form-intelligence.js';
+import {buildFormIntelligence, isInput, loadAllVariables, loadChoices, patchVariables, resetVariables} from '../lib/investigations/form-intelligence.js';
 import {buildOverlap, KIND as OVERLAP_KIND} from '../lib/investigations/overlap.js';
 import {buildTaxonomy, categoryCandidates, ISSUE as TAXONOMY_ISSUE} from '../lib/investigations/taxonomy.js';
 import {buildCsdm, loadServiceData, offeringCandidates, offeringFallback, resetServiceData} from '../lib/investigations/csdm.js';
@@ -1298,7 +1298,6 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
     this._opp = null; // the opportunity that was chosen, so the panel can say why
     this._lensNow = 'overview';
     this._query = '';
-    this._nav = 'explore';
     this._oppCache = null;
     this._hl = ''; // the requested population to highlight (see lib/app-state.js), kept until cleared
     this._proposal = null; // {id, name, mode, done}: the one proposal being prepared, bound to its record
@@ -1457,11 +1456,8 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
     const q = new URLSearchParams(window.location.search);
     const d = q.get('d');
     const hl = q.get('highlight') || '';
-    this._nav = /\/investigate\/?$/.test(window.location.pathname) ? 'investigate' : 'explore';
     this._active = INVESTIGATIONS.includes(d) ? d : HIGHLIGHT_INVESTIGATION[hl] || null;
     this._hl = this._active ? '' : POPULATIONS.includes(hl) ? hl : '';
-    // the Investigate route opens the same workspace on an investigation view
-    if (!this._active && !this._hl && /\/investigate\/?$/.test(window.location.pathname)) this._active = 'ai-readiness';
     if (initial) {
       this._lensInit = q.get('lens') || HIGHLIGHT_LENS[this._hl] || '';
       this._lensNow = this._lensInit || 'overview';
@@ -1829,6 +1825,14 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
       this._noteImpact(name, before, this._disc.form.discovery.affectedIds.length);
       this._readiness = null;
       this._ensureReadiness();
+    } else if (mode === 'starter') {
+      // the item now has questions: forget cached variables and rebuild the form check in the background
+      clearItemVariables(itemId);
+      resetVariables();
+      this._disc = {...this._disc, form: undefined};
+      this._ensure('form-intelligence');
+      this._readiness = null;
+      this._ensureReadiness();
     } else if (mode === 'category') {
       const before = this._disc.taxonomy?.discovery.affectedIds.length ?? null;
       const was = this._model.nodes.find(x => x.id === itemId)?.fields ?? 0;
@@ -1917,7 +1921,7 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
       this._wb = {id, mode, loading: true};
       await this._ensure(this._active);
       const ctx = await this._buildContext(mode, id);
-      if (this._proposal === mine) this._wb = {id, ctx, mode, auto: true};
+      if (this._proposal === mine) this._wb = {id, ctx, mode: ctx.starter ? 'starter' : mode, auto: true};
     } catch (err) {
       if (this._proposal === mine) this._wb = {id, mode, error: err?.message || 'error'};
     }
@@ -1940,7 +1944,11 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
         const all = (await loadItemVariables(id).catch(() => [])).filter(isInput).filter(v => !have.has(v.id));
         rows = [...rows, ...all.slice(0, 12 - rows.length).map(v => ({v, issues: [], shared: 0, fromSet: !!v.fromSet}))];
       }
-      if (!rows.length) throw new Error('This item has no input questions, so there is no form to improve.');
+      if (!rows.length) {
+        // no input questions is an opportunity, not a defect: the AI can suggest a starter form
+        const allVars = await loadItemVariables(id).catch(() => []);
+        return {starter: true, item: await base(n), existing: allVars.map(v => v.label || v.name).filter(Boolean)};
+      }
       const choiceTypes = rows.filter(r => ['3', '5'].includes(String(r.v.type))).map(r => r.v.id);
       const choices = choiceTypes.length ? await loadChoices(choiceTypes).catch(() => new Map()) : new Map();
       return {item: await base(n), variables: rows.map(r => ({id: r.v.id, type: String(r.v.type), mandatory: r.v.mandatory, name: r.v.name, label: r.v.label, help: r.v.help, hint: r.v.hint, issues: r.issues, choices: (choices.get(r.v.id) || []).map(c => c.text), shared: r.shared, fromSet: !!r.fromSet}))};
@@ -2011,7 +2019,7 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
     const showInsp = !!n && this._inspOpen;
     return html`
       <div class="page">
-      <cat-toolbar current=${this._nav} .lens=${this._lensNow} .model=${this._model}
+      <cat-toolbar current="explore" .lens=${this._lensNow} .model=${this._model}
         @cat-toolbar:lens=${this._onToolbarLens} @cat-toolbar:query=${e => (this._query = e.detail.q)} @cat-toolbar:pick=${e => { this._inspOpen = true; this._setItem(e.detail.id); }}></cat-toolbar>
       <div class="wrap ${this._leftOpen ? '' : 'lclosed'} ${this._prepare ? 'work' : ''} ${showInsp ? '' : 'noinsp'}" role="group" aria-label=${i18n.getMessage('Catalog workspace')} @keydown=${this._onKey}>
         ${this._renderFocus()}
@@ -2360,8 +2368,9 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
       signal: !!gaps?.length, evidence: !a ? [i18n.getMessage('Checking metadata…')] : gaps.length ? [i18n.getMessage('{0} metadata gap(s): {1}', fmt(gaps.length), gaps.map(g => g.check.label()).join(', '))] : [i18n.getMessage('No metadata gap found. The wording can still be reviewed.')]});
     // forms
     const fe = this._disc.form?.byItem.get(id);
-    out.push({kind: 'form', title: i18n.getMessage('Review form questions'), button: i18n.getMessage('Review form questions'),
-      signal: !!fe?.findings.length, evidence: !this._disc.form ? [i18n.getMessage('Checking form questions…')] : fe?.findings.length ? [i18n.getMessage('{0} question(s) flagged out of {1} inputs.', fmt(fe.findings.length), fmt(fe.inputs))] : fe ? [i18n.getMessage('No question flagged. The wording can still be reviewed.')] : [i18n.getMessage('This item has no input questions.')]});
+    const noForm = !!this._disc.form && !fe;
+    out.push({kind: 'form', title: noForm ? i18n.getMessage('Suggest questions with AI') : i18n.getMessage('Review form questions'), button: noForm ? i18n.getMessage('Suggest questions with AI') : i18n.getMessage('Review form questions'),
+      signal: !!fe?.findings.length, evidence: !this._disc.form ? [i18n.getMessage('Checking form questions…')] : fe?.findings.length ? [i18n.getMessage('{0} question(s) flagged out of {1} inputs.', fmt(fe.findings.length), fmt(fe.inputs))] : fe ? [i18n.getMessage('No question flagged. The wording can still be reviewed.')] : [i18n.getMessage('No questions configured. AI can suggest a starter form from this item’s name and descriptions. An optional improvement, not a defect.')]});
     // categories
     const tf = this._disc.taxonomy?.findings.get(id) || [];
     const single = n.catIds.filter(c => m.nodes.filter(x => x.catIds.includes(c)).length === 1).map(c => m.catTitle[c] || c);

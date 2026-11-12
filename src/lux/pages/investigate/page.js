@@ -1,7 +1,24 @@
+import {html, nothing, isServer} from 'lit';
 import {customElement} from 'lit/decorators.js';
 import {AIUXElement} from '@servicenow/aiux/aiux-components-core';
-import {withWorkspace} from '../../components/cat-workspace.js';
+import {navigate} from '@servicenow/aiux/aiux-client';
+import {i18n} from '@servicenow/aiux/aiux-services';
 
-/** Deep link (/investigate?d=…): the same shared workspace as Explore, opened on an investigation view. */
+/**
+ * Legacy deep link (/investigate?d=…). Investigations now live inside Explore, so this route
+ * only hands the same parameters to Explore, which opens the matching intelligence mode.
+ */
 @customElement('x-snc-catalogintel-investigate-page')
-export default class InvestigatePage extends withWorkspace(AIUXElement) {}
+export default class InvestigatePage extends AIUXElement {
+  connectedCallback() {
+    super.connectedCallback();
+    if (isServer) return;
+    const q = new URLSearchParams(window.location.search);
+    if (!q.get('d') && !q.get('highlight')) q.set('d', 'ai-readiness');
+    navigate(`/explore?${q}`);
+  }
+
+  render() {
+    return html`<p role="status">${i18n.getMessage('Opening Explore…')}</p>${nothing}`;
+  }
+}

@@ -6,6 +6,7 @@
  *  kind "overlap"   compare the items of a candidate group
  *  kind "category"  which EXISTING categories suit one item
  *  kind "service"   which EXISTING service offerings may match one item
+ *  kind "starter"   a small starter set of questions for an item that has none
  *
  * The page supplies the grounding data (read as the signed-in user) and this script
  * runs one Generic Prompt call, validates the reply against that data, and returns
@@ -138,6 +139,37 @@ export default function server(data, _options, input) {
           return {offeringId: String(x.offeringId), fit: one(x.fit, ['strong', 'plausible', 'weak']), reason: clip(x.reason, 300)};
         });
       }
+      data.summary = clip(r.parsed.summary, 300);
+    } else if (kind === 'starter') {
+      var TYPES = {'single-line-text': '6', 'multi-line-text': '2', 'yes-no': '1', 'select-box': '5', 'checkbox': '7', 'date': '9'};
+      var existing = list(ctx.existing, 30, 100);
+      var norm = function (s) { return clip(s, 200).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); };
+      var have = {};
+      existing.forEach(function (e) { have[norm(e)] = true; });
+      var sin = {name: clip(item.name, 200), type: clip(item.cls, 60), shortDescription: clip(item.short, 300), description: clip(item.description, 900), categories: list(item.categories, 6, 100), existingQuestions: existing};
+      r = run(
+        'You suggest a small starter set of input questions for a ServiceNow catalog item that currently has none, so requesters give the information needed to handle the request. ' + RULES +
+        'Shape: {"questions":[{"label":"...","type":"single-line-text|multi-line-text|yes-no|select-box|checkbox|date","required":true or false,"help":"... or null","choices":["..."] or [],"reason":"one sentence tied to facts of this item"}],"assumptions":["..."],"summary":"one sentence"}. ' +
+        'Rules: propose 3 to 6 questions only when the item name and descriptions justify them. If the evidence is too thin, return an empty questions list and say so in summary. ' +
+        'Ask only for information a requester can plainly supply (what, why, when, for whom, a short description of the need). Never ask for or invent approvals, policies, costs, owners, system names, entitlements or fulfilment requirements that are not stated in the data. Do not repeat an existing question. ' +
+        'Labels are short plain questions of at most 80 characters in the same language as the item. Use select-box only when the item text itself states the options, and then give 2 to 8 choices; otherwise use a text, yes-no, checkbox or date type and an empty choices list. ' +
+        'Mark a question required only if the item cannot reasonably be handled without it. List in assumptions anything a person must confirm before the questions are created. ' +
+        'Item: ' + JSON.stringify(sin) + '.'
+      );
+      var qs = [];
+      (r.parsed.questions || []).forEach(function (q) {
+        if (!q || qs.length >= 6) return;
+        var label = clip(q.label, 120);
+        var type = TYPES[q.type];
+        if (!label || !type || have[norm(label)]) return;
+        if (label.length > 80) label = label.substring(0, 79).replace(/\s+\S*$/, '') + '…';
+        var choices = type === '5' ? list(q.choices, 8, 60).filter(function (c) { return c; }) : [];
+        if (type === '5' && choices.length < 2) { type = '6'; choices = []; }
+        have[norm(label)] = true;
+        qs.push({label: label, type: type, required: !!q.required, help: q.help ? clip(q.help, 200) : '', choices: choices, reason: clip(q.reason, 240)});
+      });
+      data.questions = qs;
+      data.assumptions = list(r.parsed.assumptions, 6, 240);
       data.summary = clip(r.parsed.summary, 300);
     } else {
       return fail('Unknown request.', 'input');

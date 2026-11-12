@@ -1,3 +1,5 @@
+/* The options are rendered by a nested template inside the listbox <ul> below, which the static rule cannot see. */
+/* eslint-disable @servicenow/aiux-a11y/option-requires-listbox-parent */
 import {html, css, nothing} from 'lit';
 import {customElement} from 'lit/decorators.js';
 import {AIUXElement} from '@servicenow/aiux/aiux-components-core';
@@ -17,7 +19,8 @@ export default class CatToolbar extends AIUXElement {
     lens: {type: String},
     model: {attribute: false},
     _q: {state: true},
-    _open: {state: true}
+    _open: {state: true},
+    _i: {state: true}
   };
 
   static styles = css`
@@ -93,8 +96,7 @@ export default class CatToolbar extends AIUXElement {
       outline-offset: -2px;
       border-color: #2f6fed;
     }
-    .lens-btn:focus-visible,
-    .res:focus-visible {
+    .lens-btn:focus-visible {
       outline: 3px solid #2f6fed;
       outline-offset: -2px;
     }
@@ -112,24 +114,36 @@ export default class CatToolbar extends AIUXElement {
       border-radius: 1rem;
       box-shadow: 0 12px 32px rgba(3, 45, 66, 0.18);
     }
-    .res {
-      width: 100%;
-      text-align: left;
-      border: 0;
-      background: transparent;
-      font: inherit;
-      font-size: 0.85rem;
+    .results[hidden] {
+      display: none;
+    }
+    .opt {
       padding: 8px 10px;
       border-radius: 0.7rem;
       cursor: pointer;
       color: #032d42;
+      font-size: 0.85rem;
     }
-    .res:hover {
-      background: #f1f6ff;
+    .opt.on {
+      background: #e6efff;
+      box-shadow: inset 3px 0 0 #2f6fed;
     }
-    .res small {
+    .opt small {
       display: block;
       color: #656462;
+    }
+    .none {
+      padding: 10px;
+      font-size: 0.85rem;
+      color: #4d4c4a;
+    }
+    .vh {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
     }
     @media (prefers-reduced-motion: reduce) {
       .lens-btn {
@@ -145,47 +159,88 @@ export default class CatToolbar extends AIUXElement {
     this.model = null;
     this._q = '';
     this._open = false;
+    this._i = -1;
+    this._matchCache = {q: '', list: []};
   }
 
   _emit(name, detail) {
     this.dispatchEvent(new CustomEvent(name, {detail, bubbles: true, composed: true}));
   }
 
+  /** Filters the catalog model that is already in memory; no request is made per keystroke. */
   _matches() {
     const q = this._q.trim().toLowerCase();
     if (q.length < 2 || !this.model) return [];
-    return this.model.nodes.filter(n => n.name.toLowerCase().includes(q)).slice(0, 8);
+    if (this._matchCache.q === q && this._matchCache.model === this.model) return this._matchCache.list;
+    const list = this.model.nodes.filter(n => n.name.toLowerCase().includes(q)).slice(0, 8);
+    this._matchCache = {q, model: this.model, list};
+    return list;
   }
 
   _input(e) {
     this._q = e.target.value;
     this._open = true;
+    this._i = this._matches().length ? 0 : -1;
     this._emit('cat-toolbar:query', {q: this._q});
   }
 
-  _pick(id) {
+  _pick(n) {
     this._open = false;
-    this._emit('cat-toolbar:pick', {id});
+    this._i = -1;
+    this._q = n.name;
+    this._emit('cat-toolbar:query', {q: ''});
+    this._emit('cat-toolbar:pick', {id: n.id});
   }
 
   _key(e) {
-    if (e.key === 'Escape' && this._open) {
+    const list = this._open ? this._matches() : [];
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!this._open) {
+        this._open = true;
+        this._i = this._matches().length ? 0 : -1;
+        return;
+      }
+      if (!list.length) return;
+      this._i = e.key === 'ArrowDown' ? (this._i + 1) % list.length : (this._i - 1 + list.length) % list.length;
+    } else if (e.key === 'Enter') {
+      if (list.length && this._i >= 0) {
+        e.preventDefault();
+        this._pick(list[this._i]);
+      }
+    } else if (e.key === 'Escape' && this._open) {
       e.stopPropagation();
       this._open = false;
+      this._i = -1;
     }
   }
 
+  updated(changed) {
+    if (changed.has('_i') && this._i >= 0) this.renderRoot.querySelector(`#opt-${this._i}`)?.scrollIntoView?.({block: 'nearest'});
+  }
+
   render() {
+    const q = this._q.trim();
     const matches = this._open ? this._matches() : [];
+    const empty = this._open && q.length >= 2 && !matches.length;
+    const expanded = matches.length > 0 || empty;
     return html`<div class="bar">
       <cat-appnav bare current=${this.current}></cat-appnav>
       <div class="lenses" role="group" aria-label=${i18n.getMessage('Intelligence lenses')}>
         ${LENSES.map(l => html`<button class="lens-btn" aria-pressed=${this.lens === l.id} title=${l.hint()} @click=${() => this._emit('cat-toolbar:lens', {lens: l.id})}>${l.label()}</button>`)}
       </div>
       <div class="search">
-        <input type="search" placeholder=${i18n.getMessage('Search the catalog…')} aria-label=${i18n.getMessage('Search catalog items')} .value=${this._q}
-          @input=${this._input} @keydown=${this._key} @focus=${() => (this._open = true)}>
-        ${matches.length ? html`<ul class="results">${matches.map(n => html`<li><button class="res" @click=${() => this._pick(n.id)}>${n.name}<small>${classLabel(n.cls)}</small></button></li>`)}</ul>` : nothing}
+        <input type="text" role="combobox" autocomplete="off" aria-autocomplete="list" aria-expanded=${expanded ? 'true' : 'false'} aria-controls="results"
+          aria-activedescendant=${matches.length && this._i >= 0 ? `opt-${this._i}` : ''}
+          placeholder=${i18n.getMessage('Search the catalog…')} aria-label=${i18n.getMessage('Search catalog items')} .value=${this._q}
+          @input=${this._input} @keydown=${this._key} @focus=${() => { if (this._q.trim().length >= 2) this._open = true; }}
+          @blur=${() => setTimeout(() => (this._open = false), 150)}>
+        <ul id="results" class="results" role="listbox" tabindex="-1" aria-label=${i18n.getMessage('Matching catalog items')} ?hidden=${!expanded}>
+          ${matches.map((n, k) => html`<li id=${`opt-${k}`} role="option" tabindex="-1" aria-selected=${k === this._i ? 'true' : 'false'} class="opt ${k === this._i ? 'on' : ''}"
+            @mousedown=${e => e.preventDefault()} @click=${() => this._pick(n)} @mousemove=${() => (this._i = k)}>${n.name}<small>${classLabel(n.cls)}</small></li>`)}
+          ${empty ? html`<li class="none" role="presentation">${i18n.getMessage('No catalog item matches “{0}”.', q)}</li>` : nothing}
+        </ul>
+        <span class="vh" role="status" aria-live="polite">${empty ? i18n.getMessage('No catalog item matches') : matches.length ? i18n.getMessage('{0} results. Use the arrow keys to choose.', String(matches.length)) : ''}</span>
       </div>
     </div>`;
   }

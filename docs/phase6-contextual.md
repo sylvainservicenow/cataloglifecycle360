@@ -22,3 +22,11 @@ Journey: Select → Understand → Act → Review → Apply, all in Explore.
 ## Build fix: pages must extend the base class directly
 
 The AIUX build only recognises a page file whose class is `extends AIUXElement` or `extends mixin(AIUXElement)` (one level; see `PAGE_BASE_REGEX` in the SDK). From Phase 6 the Explore and Investigate pages extended a shared component class instead, so the build silently produced only the Overview route. The shared workspace is now a mixin (`withWorkspace`, which applies `withWidgetContext` itself) and each page is `extends withWorkspace(AIUXElement)`. Check `dist/manifest.json` → `pages` after a build: it must list /overview, /explore and /investigate.
+
+## Phase 9: unified workspace
+
+- Navigation is Home and Explore. `/investigate?d=…` is only a redirect page that hands its parameters to Explore (`pages/investigate/page.js`); investigations are modes of the left panel and never remount the universe or inspector.
+- Search is an ARIA combobox (`cat-toolbar`): arrows, Enter, Escape, mouse, empty state; it filters the in-memory catalog model.
+- Starter forms: for an item with no input questions, the form action becomes "Suggest questions with AI" (workbench mode `starter`, server kind `starter`). Types limited to single-line text, multi-line text, yes/no, select box, checkbox, date. Apply creates `item_option_new` records (and `question_choice` rows for select boxes) with the Table API as the signed-in user, after a stale check, and reads every record back. Not exercised against the instance during development (no catalog writes); an ACL or application-scope refusal surfaces through the usual error messages.
+- Home is a single screen: compact hero, four KPI tiles, four ranked opportunity cards (evidence tier, then affected items).
+- The app version is bumped with every deployment so the installer replaces the widgets.

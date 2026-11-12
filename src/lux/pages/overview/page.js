@@ -34,11 +34,11 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
       width: 100%;
       min-width: 0;
       /* room for Otto's docked bar so it never covers the last cards */
-      padding-bottom: 96px;
+      padding-bottom: 72px;
       container-type: inline-size;
     }
     .hero-universe {
-      height: clamp(320px, 40vh, 440px);
+      height: clamp(170px, 25vh, 250px);
       cursor: pointer;
       position: relative;
       transition: box-shadow 0.25s ease, border-color 0.25s ease;
@@ -54,10 +54,27 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
       grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
     }
     .grid.kpis {
-      grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
     }
-    .grid.three {
-      grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    @container (max-width: 760px) {
+      .grid.kpis {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    .grid.four {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    @container (max-width: 1000px) {
+      .grid.four {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @container (max-width: 560px) {
+      .grid.four,
+      .grid.kpis {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
     h2.sec {
       margin: 0;
@@ -132,8 +149,43 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
       color: var(--tone);
       font-variant-numeric: tabular-nums;
     }
+    .kpis a.tile {
+      padding: 10px 14px;
+      gap: 0;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
     .kpis .num {
-      font-size: 2rem;
+      font-size: 1.7rem;
+    }
+    .kpis .eyebrow {
+      order: 2;
+      max-width: 60%;
+      text-align: right;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 0.8rem;
+      justify-content: flex-end;
+    }
+    .opps a.tile {
+      padding: 12px 14px;
+    }
+    .opps .num {
+      font-size: 2.1rem;
+    }
+    .arrow {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      color: var(--tone);
+      opacity: 0.55;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    a.tile:hover .arrow,
+    a.tile:focus-visible .arrow {
+      opacity: 1;
+      transform: translateX(3px);
     }
     .txt {
       margin: 0;
@@ -141,21 +193,14 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
       color: #4d4c4a;
       line-height: 1.4;
     }
-    .go {
-      margin-top: auto;
-      padding-top: 6px;
-      font-weight: 600;
-      font-size: 0.85rem;
-      color: var(--tone);
-    }
-    .go span {
-      display: inline-block;
-      transition: transform 0.2s ease;
-    }
-    a.tile:hover .go span {
-      transform: translateX(4px);
-    }
     .tile.wait {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 14px 16px;
+      min-height: 96px;
+      border-radius: 1.25rem;
+      border: 1px dashed #c3cedc;
       cursor: default;
       border-left-color: #c3cedc;
       background: #fafbfc;
@@ -164,18 +209,6 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
       margin: 0;
       font-size: 0.8rem;
       color: #4d4c4a;
-    }
-    .open-hint {
-      position: absolute;
-      left: 14px;
-      bottom: 12px;
-      padding: 4px 11px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.9);
-      color: #032d42;
-      font-size: 0.78rem;
-      font-weight: 600;
-      pointer-events: none;
     }
     @media (prefers-reduced-motion: no-preference) {
       .rise {
@@ -191,7 +224,6 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
     @media (prefers-reduced-motion: reduce) {
       a.tile,
       a.tile:hover,
-      .go span,
       .hero-universe {
         transition: none;
         transform: none;
@@ -275,41 +307,45 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
     return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${paths[kind]}></path></svg>`;
   }
 
-  _kpi(tone, icon, value, label, sub, target) {
-    return this._link(tone, target, html`<span class="eyebrow">${this._icon(icon)}${label}</span><span class="num">${value}</span><span class="txt">${sub}</span><span class="go">${i18n.getMessage('Show in the universe')} <span aria-hidden="true">→</span></span>`, `${value} ${label}. ${sub}`);
+  _kpi(tone, icon, value, label, target) {
+    return this._link(tone, target, html`<span class="num">${value}</span><span class="eyebrow">${this._icon(icon)}${label}</span><span class="arrow" aria-hidden="true">→</span>`, `${value} ${label}`);
   }
 
-  _card(tone, icon, title, text, target, action) {
-    return this._link(tone, target, html`<span class="eyebrow">${this._icon(icon)}${title}</span><p class="txt">${text}</p><span class="go">${action} <span aria-hidden="true">→</span></span>`, `${title}. ${text}`);
+  /**
+   * The four most relevant opportunities, chosen deterministically from the five engines:
+   * evidence strength first (3 = a direct check of a record field or link, 2 = a text-similarity
+   * heuristic, 1 = a weak suggestion), then the number of affected items. The fifth stays in Explore.
+   */
+  _rankedOpportunities() {
+    const o = this._opps || {};
+    const f = n => new Intl.NumberFormat().format(n);
+    const defs = [
+      {key: 'meta', tier: 3, n: o.meta?.n, tone: 'amber', icon: 'doc', title: i18n.getMessage('Metadata quality'), count: f(o.meta?.n), text: i18n.getMessage('of {0} active items have a potential gap in their descriptions or form.', f(o.meta?.of)), highlight: 'metadata-gaps'},
+      {key: 'taxonomy', tier: o.taxonomy?.uncategorised > 0 ? 3 : 2, n: o.taxonomy?.n, tone: 'red', icon: 'tag', title: i18n.getMessage('Discoverability'), count: f(o.taxonomy?.n), text: i18n.getMessage('items may be hard to find, {0} of them in no category.', f(o.taxonomy?.uncategorised)), highlight: 'taxonomy-gaps'},
+      {key: 'form', tier: 2, n: o.form?.n, tone: 'amber', icon: 'form', title: i18n.getMessage('Form quality'), count: f(o.form?.n), text: i18n.getMessage('forms have a question worth reviewing, out of {0}.', f(o.form?.of)), highlight: 'form-gaps'},
+      {key: 'overlap', tier: 2, n: o.overlap?.items, tone: 'amber', icon: 'copy', title: i18n.getMessage('Possible duplicates'), count: f(o.overlap?.n), text: i18n.getMessage('groups of look-alike items ({0} items) to compare.', f(o.overlap?.items)), highlight: 'overlap'},
+      {key: 'csdm', tier: 1, n: o.csdm?.candidates, tone: 'blue', icon: 'link', title: i18n.getMessage('Service alignment'), count: f(o.csdm?.candidates), text: i18n.getMessage('items may align with a service offering. {0} are already linked.', f(o.csdm?.verified)), highlight: 'service-candidates'}
+    ];
+    const ready = defs.filter(d => o[d.key] && !o[d.key].error && d.n > 0).sort((a, b) => b.tier - a.tier || b.n - a.n);
+    return {cards: ready.slice(0, 4), pending: defs.filter(d => !o[d.key]).length};
   }
 
   _renderOpportunities() {
-    const o = this._opps;
-    const f = n => new Intl.NumberFormat().format(n);
-    const wait = (eyebrow, d) => html`<div class="tile wait rise" role="status" data-investigation=${d} style="display:flex"><span class="eyebrow">${eyebrow}</span><p class="txt">${i18n.getMessage('Reading records…')}</p></div>`;
-    const unavailable = (eyebrow, d) => html`<div class="tile wait rise" data-investigation=${d} style="display:flex"><span class="eyebrow">${eyebrow}</span><p class="txt">${i18n.getMessage('This could not be read right now, so no figure is shown.')}</p></div>`;
-    // colour says how firm the finding is: red for gaps that matter, amber for candidates to review, blue for information
-    const card = (key, tone, icon, eyebrow, count, text, action, highlight, d) => {
-      const v = o[key];
-      if (!v) return wait(eyebrow, d);
-      if (v.error) return unavailable(eyebrow, d);
-      const target = exploreLink({highlight});
-      return html`<a class="tile rise ${tone}" data-investigation=${d} href=${`${this._base}${target}`} aria-label=${`${eyebrow}: ${count(v)}. ${text(v)}`} @click=${e => this._tile(e, target)}>
-        <span class="eyebrow">${this._icon(icon)}${eyebrow}</span>
-        <span class="num">${count(v)}</span>
-        <span class="txt">${text(v)}</span>
-        <span class="go">${action} <span aria-hidden="true">→</span></span>
-      </a>`;
-    };
-    return html`<section aria-labelledby="opps" class="flex flex-col gap-3">
+    const {cards, pending} = this._rankedOpportunities();
+    const slots = pending ? 4 : cards.length;
+    return html`<section aria-labelledby="opps" class="flex flex-col gap-2">
       <h2 id="opps" class="sec">${i18n.getMessage('Where to look first')}</h2>
-      <p class="hint">${i18n.getMessage('Each card opens Explore with exactly these items highlighted in the universe. Counts are prompts to review, not verdicts.')}</p>
-      <div class="grid">
-        ${card('meta', 'amber', 'doc', i18n.getMessage('Metadata quality'), v => f(v.n), v => i18n.getMessage('of {0} active items have a potential gap in names, descriptions or forms. A prompt to review, not a verdict.', f(v.of)), i18n.getMessage('Show these items'), 'metadata-gaps', 'ai-readiness')}
-        ${card('form', 'amber', 'form', i18n.getMessage('Form quality'), v => f(v.n), v => i18n.getMessage('of {0} items with a form have a question worth reviewing: missing or technical labels, or no guidance on hard questions.', f(v.of)), i18n.getMessage('Show these items'), 'form-gaps', 'form-intelligence')}
-        ${card('overlap', 'amber', 'copy', i18n.getMessage('Potential duplication'), v => f(v.n), v => i18n.getMessage('groups of look-alike items ({0} items) to compare. Similar names are candidates, not proof.', f(v.items)), i18n.getMessage('Compare candidates'), 'overlap', 'overlap')}
-        ${card('taxonomy', 'red', 'tag', i18n.getMessage('Taxonomy and discoverability'), v => f(v.n), v => i18n.getMessage('of {0} active items may be hard to find, including {1} in no category at all.', f(v.of), f(v.uncategorised)), i18n.getMessage('Show these items'), 'taxonomy-gaps', 'taxonomy')}
-        ${card('csdm', 'blue', 'link', i18n.getMessage('Service alignment'), v => f(v.candidates), v => i18n.getMessage('items have a likely service offering to review. {0} are already verified as linked, out of {1} offerings.', f(v.verified), f(v.offerings)), i18n.getMessage('Check alignment'), 'service-candidates', 'csdm-alignment')}
+      <div class="grid four opps">
+        ${cards.map(d => {
+          const target = exploreLink({highlight: d.highlight});
+          return html`<a class="tile rise ${d.tone}" data-investigation=${d.key} href=${`${this._base}${target}`} aria-label=${`${d.title}: ${d.count}. ${d.text}`} @click=${e => this._tile(e, target)}>
+            <span class="eyebrow">${this._icon(d.icon)}${d.title}</span>
+            <span class="num">${d.count}</span>
+            <span class="txt">${d.text}</span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </a>`;
+        })}
+        ${Array.from({length: Math.max(0, slots - cards.length)}, () => html`<div class="tile wait rise" role="status"><span class="eyebrow">${i18n.getMessage('Reading records…')}</span></div>`)}
       </div>
     </section>`;
   }
@@ -317,39 +353,28 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
   render() {
     const s = this._stats;
     const f = n => new Intl.NumberFormat().format(n);
-    const csdm = this._opps?.csdm && !this._opps.csdm.error ? this._opps.csdm : null;
     return html`
-      <div class="mx-auto flex max-w-7xl flex-col gap-6">
+      <div class="mx-auto flex max-w-7xl flex-col gap-3">
         <cat-appnav current="overview"></cat-appnav>
-        <section class="rise flex flex-col gap-3">
+        <section class="rise flex flex-col gap-1">
           <p class="font-mono text-xs uppercase tracking-wide text-primary-900">${i18n.getMessage('Catalog Intelligence 360')}</p>
-          <h1 class="max-w-3xl break-words text-4xl font-bold text-text-primary">${i18n.getMessage('Your service catalog, as a living universe.')}</h1>
-          <p class="max-w-2xl text-base leading-relaxed text-text-secondary">
-            ${i18n.getMessage('Every dot is a real catalog item from this instance. Zoom into a category, switch lenses and see where your catalog is rich, thin or quiet.')}
-          </p>
+          <h1 class="max-w-3xl break-words text-3xl font-bold text-text-primary">${i18n.getMessage('Your service catalog, as a living universe.')}</h1>
         </section>
 
         <section class="hero-universe overflow-hidden rounded-3xl border border-base-300 shadow-sm" aria-label=${i18n.getMessage('Catalog universe preview. Select to open Explore.')}>
           <cat-universe compact @cat-universe:enter=${this._enter}></cat-universe>
-          <span class="open-hint" aria-hidden="true">${i18n.getMessage('Click anywhere to explore')}</span>
         </section>
 
         ${s
           ? html`<section aria-label=${i18n.getMessage('Catalog at a glance')} class="grid kpis">
-              ${this._kpi('blue', 'grid', f(s.items), i18n.getMessage('catalog items'), i18n.getMessage('{0} active. Open the full catalog.', f(s.active)), exploreLink({highlight: 'all', lens: 'overview'}))}
-              ${this._kpi('blue', 'layers', f(s.populatedCategories), i18n.getMessage('categories in use'), i18n.getMessage('Each holds at least one item.'), exploreLink({highlight: 'categories', lens: 'overview'}))}
-              ${this._kpi('green', 'check', f(s.complete), i18n.getMessage('items with complete metadata'), i18n.getMessage('Description, short description, icon and category all present.'), exploreLink({highlight: 'complete', lens: 'quality'}))}
-              ${this._kpi('blue', 'pulse', f(s.requestedItems), i18n.getMessage('items that have been requested'), i18n.getMessage('Unique items, from {0} request records.', f(s.requests)), exploreLink({highlight: 'requested', lens: 'demand'}))}
+              ${this._kpi('blue', 'grid', f(s.items), i18n.getMessage('catalog items'), exploreLink({highlight: 'all', lens: 'overview'}))}
+              ${this._kpi('blue', 'layers', f(s.populatedCategories), i18n.getMessage('categories in use'), exploreLink({highlight: 'categories', lens: 'overview'}))}
+              ${this._kpi('green', 'check', f(s.complete), i18n.getMessage('items with complete metadata'), exploreLink({highlight: 'complete', lens: 'quality'}))}
+              ${this._kpi('blue', 'pulse', f(s.requestedItems), i18n.getMessage('items requested'), exploreLink({highlight: 'requested', lens: 'demand'}))}
             </section>`
           : nothing}
 
         ${this._opps ? this._renderOpportunities() : nothing}
-
-        <section class="grid three" aria-label=${i18n.getMessage('Intelligence lenses')}>
-          ${this._card('green', 'check', i18n.getMessage('Completeness'), i18n.getMessage('See which items are missing descriptions, icons or a category.'), exploreLink({lens: 'quality'}), i18n.getMessage('Open the Completeness lens'))}
-          ${this._card('blue', 'pulse', i18n.getMessage('Lifecycle and demand'), i18n.getMessage('Spot inactive items and the few that have actually been requested. The Demand lens is one click away.'), exploreLink({lens: 'lifecycle'}), i18n.getMessage('Open the Lifecycle lens'))}
-          ${this._card('blue', 'link', i18n.getMessage('CSDM foundation'), csdm ? i18n.getMessage('{0} items are linked to a service offering and {1} more may align with one.', f(csdm.verified), f(csdm.candidates)) : i18n.getMessage('See which items link to a service offering and where a match is plausible.'), exploreLink({lens: 'csdm', highlight: 'service'}), i18n.getMessage('Open the CSDM lens'))}
-        </section>
       </div>
     `;
   }
