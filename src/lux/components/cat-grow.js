@@ -8,6 +8,7 @@ import {loadServiceData} from '../lib/investigations/csdm.js';
 import {exploreLink} from '../lib/app-state.js';
 import {createAssemblyLine, STAGE_IDS, APPROVAL_STEP, STANDARD_VARIABLES} from '../lib/grow/assembly-line.js';
 import {DEMO_INTAKE, STAGES} from '../lib/grow/scenario.js';
+import {ACTIONS, clearHandoff, consumeHandoff, pendingFor, sourceLabel} from '../lib/handoff.js';
 
 const PATHS = {
   requirements: 'M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h5',
@@ -63,7 +64,8 @@ export default class CatGrow extends AIUXElement {
     _decision: {state: true},
     _busy: {state: true},
     _log: {state: true},
-    _say: {state: true}
+    _say: {state: true},
+    _ctx: {state: true}
   };
 
   static styles = css`
@@ -692,6 +694,36 @@ export default class CatGrow extends AIUXElement {
       align-items: center;
       margin-top: 6px;
     }
+    .ctxbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 12px;
+      margin-bottom: 16px;
+      padding: 10px 16px;
+      border-radius: 1.2rem;
+      background: linear-gradient(120deg, #effaf3, #f1f6ff);
+      border: 1px solid #bfe3cd;
+      font-size: 0.86rem;
+    }
+    .ctx-t {
+      color: var(--ink);
+    }
+    .ctx-chips {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .ctx-note {
+      flex-basis: 100%;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .ctx-act {
+      margin-left: auto;
+      display: inline-flex;
+      gap: 6px;
+    }
     /* running */
     .running-log {
       list-style: none;
@@ -1250,6 +1282,7 @@ export default class CatGrow extends AIUXElement {
     this._resetReview();
     this._log = [];
     this._say = '';
+    this._ctx = null;
     this._line = null;
     this._base = '';
     this._busy = false;
@@ -1283,6 +1316,7 @@ export default class CatGrow extends AIUXElement {
         this._services = await loadServiceData().catch(() => null);
         this._line = createAssemblyLine({model: m, services: this._services});
         this._queue = await this._line.listRequests();
+        this._applyHandoff();
       })
       .catch(() => (this._model = false));
   }
@@ -1328,8 +1362,70 @@ export default class CatGrow extends AIUXElement {
     };
   }
 
+  /* ---------- context from Understand ---------- */
+  _clearContext() {
+    clearHandoff();
+    this._ctx = null;
+  }
+
+  /** Opens with a service, category or existing item chosen in Understand. The fields come from live records and can all be edited. */
+  _applyHandoff() {
+    const h = pendingFor('grow');
+    if (!h || !this._model) return;
+    consumeHandoff();
+    const m = this._model;
+    const intake = {...BLANK, files: []};
+    const context = {};
+    if (h.action === 'create-item' && h.service) {
+      const o = this._services?.offeringById.get(h.service.id);
+      context.service = {id: h.service.id, name: h.service.name, desc: o?.desc || ''};
+      intake.title = h.service.name;
+      intake.description = `Requesters need a catalog item to order the service “${h.service.name}”.${o?.desc ? ` The service offering is described as: ${o.desc}` : ''} Describe how it should be requested and fulfilled.`;
+    } else if (h.action === 'fill-gap' && h.category) {
+      const c = m.clusters.find(x => x.id === h.category.id);
+      const names = (c?.items || []).slice(0, 4).map(n => n.name);
+      context.category = {id: h.category.id, title: h.category.title, items: c?.items.length || 0};
+      intake.title = `New ${h.category.title} request`;
+      intake.description = `The “${h.category.title}” category holds ${c?.items.length || 0} item(s) today${names.length ? ` (${names.join(', ')})` : ''}. Describe the service that should be added to broaden its coverage.`;
+    } else if (h.action === 'create-variant' && h.item) {
+      const n = m.nodes.find(x => x.id === h.item.id);
+      if (!n) return;
+      context.baseItem = {id: n.id, name: n.name};
+      const cid = n.catIds[0];
+      if (cid) context.category = {id: cid, title: m.catTitle[cid] || '', items: m.clusters.find(x => x.id === cid)?.items.length || 0};
+      intake.title = `${n.name} variant`;
+      intake.description = `A variant of the existing item “${n.name}”.${n.shortDescription ? ` ${n.shortDescription}` : ''} Describe what should be different: who it is for, what it includes and how it is fulfilled.`;
+    } else return;
+    intake.context = context;
+    this._intake = intake;
+    this._ctx = h;
+    this._phaseTo('intake');
+  }
+
+  _renderContext() {
+    const h = this._ctx;
+    if (!h) return nothing;
+    const c = this._intake.context || {};
+    const chip = (k, v) => html`<span class="chip blue">${v}</span>`;
+    return html`<section class="ctxbar" aria-label=${i18n.getMessage('Context from Understand')}>
+      <span class="tag live">${i18n.getMessage('Live context')}</span>
+      <span class="ctx-t"><b>${ACTIONS[h.action].label()}</b> · ${i18n.getMessage('from the {0}', sourceLabel(h))}</span>
+      <span class="ctx-chips">
+        ${c.service ? chip(i18n.getMessage('Service'), `${i18n.getMessage('Service')}: ${c.service.name}`) : nothing}
+        ${c.category ? chip(i18n.getMessage('Category'), `${i18n.getMessage('Category')}: ${c.category.title}`) : nothing}
+        ${c.baseItem ? chip(i18n.getMessage('Base item'), `${i18n.getMessage('Base item')}: ${c.baseItem.name}`) : nothing}
+      </span>
+      <span class="ctx-note">${i18n.getMessage('These come from your real catalog. Everything the Assembly Line produces next is simulated.')}</span>
+      <span class="ctx-act">
+        <button class="btn sm" @click=${() => navigate(h.returnTo || '/explore')}>← ${i18n.getMessage('Back to Understand')}</button>
+        <button class="btn sm ghost" @click=${() => { this._clearContext(); this._intake = {...BLANK, files: []}; this._phaseTo('overview'); }}>${i18n.getMessage('Start without context')}</button>
+      </span>
+    </section>`;
+  }
+
   /* ---------- journey ---------- */
   _newProposal() {
+    this._clearContext();
     this._intake = {...BLANK, files: []};
     this._resetReview();
     this._proposal = null;
@@ -1338,6 +1434,7 @@ export default class CatGrow extends AIUXElement {
   }
 
   _openRequest(r) {
+    this._clearContext();
     this._intake = {...r.intake, files: r.intake.files.map(f => ({...f}))};
     this._resetReview();
     this._proposal = null;
@@ -1360,6 +1457,7 @@ export default class CatGrow extends AIUXElement {
     });
     this._proposal = proposal;
     this._category = proposal.draft.category?.id || null;
+    if (this._intake.context?.baseItem) this._dupChoice = 'extend';
     this._tab = 'overview';
     this._say = i18n.getMessage('Draft ready for review');
     this._phaseTo('draft');
@@ -1738,7 +1836,7 @@ export default class CatGrow extends AIUXElement {
         ${dup.matches.map(
           m => html`<article class="match"><div class="row"><span class="nm">${m.name}</span><span class="chip ${m.score >= 0.3 ? 'warn' : ''}">${Math.round(m.score * 100)}% ${i18n.getMessage('alike')}</span></div>
             <span class="bar ${m.score >= 0.3 ? 'warn' : ''}" role="img" aria-label=${i18n.getMessage('{0}% alike', String(Math.round(m.score * 100)))}><i style="width:${Math.round(m.score * 100)}%"></i></span>
-            <span class="meta">${m.category || i18n.getMessage('No category')} · ${i18n.getMessage('{0} requests', String(m.requests))}${m.shortDescription ? ` · ${m.shortDescription}` : ''}</span>
+            <span class="meta">${m.base ? html`<span class="chip blue">${i18n.getMessage('Base item')}</span> ` : nothing}${m.category || i18n.getMessage('No category')} · ${i18n.getMessage('{0} requests', String(m.requests))}${m.shortDescription ? ` · ${m.shortDescription}` : ''}</span>
             ${this._link(exploreLink({item: m.id}), i18n.getMessage('Inspect in Understand'))}</article>`
         )}
       </div>
@@ -1806,6 +1904,6 @@ export default class CatGrow extends AIUXElement {
 
   render() {
     return html`<div role="status" aria-live="polite" class="vh">${this._say}</div>
-      ${this._model === null ? html`<div class="skeleton" role="status" aria-label=${i18n.getMessage('Reading the catalog…')}></div>` : this._model === false ? html`<p role="alert">${i18n.getMessage('The catalog could not be read right now.')}</p>` : this._phase === 'intake' ? this._renderIntake() : this._phase === 'running' ? this._renderRunning() : this._phase === 'draft' && this._proposal ? this._renderDraft() : this._renderOverview()}`;
+      ${this._model === null ? html`<div class="skeleton" role="status" aria-label=${i18n.getMessage('Reading the catalog…')}></div>` : this._model === false ? html`<p role="alert">${i18n.getMessage('The catalog could not be read right now.')}</p>` : html`${this._ctx ? this._renderContext() : nothing}${this._phase === 'intake' ? this._renderIntake() : this._phase === 'running' ? this._renderRunning() : this._phase === 'draft' && this._proposal ? this._renderDraft() : this._renderOverview()}`}`;
   }
 }

@@ -24,6 +24,7 @@ export default class CatInspector extends AIUXElement {
     itemId: {type: String, attribute: 'item-id'},
     model: {attribute: false},
     findings: {attribute: false}, // [{title, items: [{state: 'pass'|'fail'|'info', text}]}]
+    lifecycle: {attribute: false}, // [{action, label, pillar, hint}] contextual Grow / Improve actions
     _vars: {state: true},
     _services: {state: true}
   };
@@ -65,6 +66,49 @@ export default class CatInspector extends AIUXElement {
     p {
       margin: 2px 0;
       overflow-wrap: anywhere;
+    }
+    .lc {
+      margin: 10px 0 4px;
+      padding: 10px 12px;
+      border-radius: 1rem;
+      background: linear-gradient(135deg, #f6f2ff, #effaf3);
+      border: 1px solid rgba(3, 45, 66, 0.1);
+    }
+    .lc-t {
+      margin: 0 0 6px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #4d4c4a;
+    }
+    .lc-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .lc button {
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 0.3rem 0.8rem;
+      border-radius: 999px;
+      border: 1px solid currentColor;
+      background: #fff;
+      cursor: pointer;
+    }
+    .lc button.grow {
+      color: #0b5e33;
+    }
+    .lc button.improve {
+      color: #5a32b8;
+    }
+    .lc button:hover {
+      background: #f7f9fb;
+    }
+    .lc button:focus-visible {
+      outline: 3px solid #2f6fed;
+      outline-offset: 2px;
     }
     .badges {
       display: flex;
@@ -222,6 +266,10 @@ export default class CatInspector extends AIUXElement {
     }
   }
 
+  _lifecycle(a) {
+    this.dispatchEvent(new CustomEvent('cat-inspector:lifecycle', {detail: {action: a.action, itemId: this.itemId}, bubbles: true, composed: true}));
+  }
+
   _close() {
     this.dispatchEvent(new CustomEvent('cat-inspector:close', {bubbles: true, composed: true}));
   }
@@ -238,6 +286,12 @@ export default class CatInspector extends AIUXElement {
       <h2>${n.name}</h2>
       <div class="badges"><span class="badge">${classLabel(n.cls)}</span><span class="badge ${n.active ? 'ok' : 'off'}">${n.active ? i18n.getMessage('Active') : i18n.getMessage('Inactive')}</span></div>
 
+      ${this.lifecycle?.length
+        ? html`<div class="lc" role="group" aria-label=${i18n.getMessage('Take this further')}>
+            <p class="lc-t">${i18n.getMessage('Take this further')}</p>
+            <div class="lc-row">${this.lifecycle.map(a => html`<button class=${a.pillar} title=${a.hint || ''} @click=${() => this._lifecycle(a)}>${a.label}</button>`)}</div>
+          </div>`
+        : nothing}
       <h3>${i18n.getMessage('Short description')}</h3>
       <p>${n.shortDescription || html`<em class="muted">${i18n.getMessage('None')}</em>`}</p>
       <h3>${i18n.getMessage('Description')}</h3>

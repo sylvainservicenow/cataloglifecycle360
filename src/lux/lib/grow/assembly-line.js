@@ -152,10 +152,25 @@ export function createAssemblyLine(env) {
 
       // LIVE: compares with the real catalog, read only
       const matches = await step('duplicates', 1000, () => similarItems(env.model, intake.title, intake.description));
+      const ctx = intake.context || {};
+      // a variant starts from an existing item: it is always compared with its base (live record)
+      const base = ctx.baseItem ? env.model.nodes.find(n => n.id === ctx.baseItem.id) : null;
+      if (base) {
+        const hit = matches.find(m => m.id === base.id);
+        if (hit) Object.assign(hit, {base: true, score: Math.max(hit.score, 0.6)});
+        else matches.unshift({id: base.id, name: base.name, shortDescription: base.shortDescription, score: 0.6, shared: 0, requests: base.requests, category: env.model.catTitle[base.catIds[0]] || '', categoryId: base.catIds[0] || '', base: true});
+        matches.sort((a, b) => b.score - a.score);
+      }
       const strong = matches[0]?.score >= 0.3;
       onStage('duplicates', strong ? 'attention' : 'done');
 
       const live = {matches, categories: suggestCategories(env.model, intake.title, matches), offerings: suggestOfferings(env.services, intake.title, intake.description)};
+      // context chosen in Understand (live records) leads the suggestions
+      if (ctx.category) {
+        const c = env.model.clusters.find(x => x.id === ctx.category.id);
+        live.categories = [{id: ctx.category.id, title: ctx.category.title, items: c?.items.length || 0, score: 0.99, fromContext: true}, ...live.categories.filter(x => x.id !== ctx.category.id)].slice(0, 3);
+      }
+      if (ctx.service) live.offerings = [{id: ctx.service.id, name: ctx.service.name, desc: ctx.service.desc || '', linkedItems: env.services?.byOffering.get(ctx.service.id)?.length || 0, fromContext: true}, ...live.offerings.filter(x => x.id !== ctx.service.id)].slice(0, 3);
       const draft = await step('draft', 1300, () => buildDraft(intake, live));
       onStage('draft', 'done');
 

@@ -21,6 +21,10 @@ declare global {
                         table: 'sys_aix_dependency'
                         id: 'dbcaf7a5e92d4f5410639c277298c714'
                     }
+                    'aiux-dependency|handoff.js': {
+                        table: 'sys_aix_dependency'
+                        id: '4578b11d06249161bcc242553cfc6f04'
+                    }
                     'aiux-dependency|icons.js': {
                         table: 'sys_aix_dependency'
                         id: 'c40983786024185c482345e7eea0e3f7'
@@ -89,6 +93,10 @@ declare global {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: '306f57ecc421555f95bdb524bad240c0'
                     }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-explore-page|handoff.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '00098b100bcfca7230eb36c92caccf35'
+                    }
                     'aiux-m2m-widget-dep|x-snc-catlife360-explore-page|icons.js': {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: '961f90cfd918384ac88ecb1eb452c2eb'
@@ -101,9 +109,17 @@ declare global {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: '0a20170e430bbcb6afeef06a03bea6cf'
                     }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-grow-page|handoff.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: 'faaa9f71ff3d168d30d4cbd0fb3b2748'
+                    }
                     'aiux-m2m-widget-dep|x-snc-catlife360-improve-page|cat-appnav.js': {
                         table: 'sys_aix_m2m_widget_dependency'
                         id: '72162ddc250e7ee851d8cd1dbcc5b600'
+                    }
+                    'aiux-m2m-widget-dep|x-snc-catlife360-improve-page|handoff.js': {
+                        table: 'sys_aix_m2m_widget_dependency'
+                        id: '15cdf765aca030ae689e0373a1a0d6a7'
                     }
                     'aiux-m2m-widget-dep|x-snc-catlife360-improve-page|icons.js': {
                         table: 'sys_aix_m2m_widget_dependency'

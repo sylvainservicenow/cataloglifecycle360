@@ -9,7 +9,9 @@ import {buildFormIntelligence, isInput, loadAllVariables, loadChoices, patchVari
 import {buildOverlap, KIND as OVERLAP_KIND} from '../lib/investigations/overlap.js';
 import {buildTaxonomy, categoryCandidates, ISSUE as TAXONOMY_ISSUE} from '../lib/investigations/taxonomy.js';
 import {buildCsdm, loadServiceData, offeringCandidates, offeringFallback, resetServiceData} from '../lib/investigations/csdm.js';
+import {navigate} from '@servicenow/aiux/aiux-client';
 import {OTTO_TOOLS, ottoContext} from '../lib/otto.js';
+import {ACTIONS, clearHandoff, getHandoff, startHandoff} from '../lib/handoff.js';
 import {setAppState, HIGHLIGHT_INVESTIGATION, HIGHLIGHT_LENS, POPULATIONS} from '../lib/app-state.js';
 import './cat-universe.js';
 import '../widgets/semantic-assess/index.js';
@@ -833,6 +835,53 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
       flex-wrap: wrap;
       gap: 6px;
       align-items: center;
+    }
+    .lc {
+      display: grid;
+      gap: 6px;
+      padding: 10px 12px;
+      border-radius: 1rem;
+      background: linear-gradient(135deg, #f6f2ff, #effaf3);
+      border: 1px solid rgba(3, 45, 66, 0.1);
+    }
+    .lc-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .lcb {
+      font: inherit;
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 0.3rem 0.85rem;
+      border-radius: 999px;
+      border: 1px solid currentColor;
+      background: #fff;
+      cursor: pointer;
+    }
+    .lcb.grow {
+      color: #0b5e33;
+    }
+    .lcb.improve {
+      color: #5a32b8;
+    }
+    .lcb:focus-visible {
+      outline: 3px solid #2f6fed;
+      outline-offset: 2px;
+    }
+    .hbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: #f1ebff;
+      border: 1px solid #d6c8f5;
+      color: #3b2a8f;
+      font-size: 0.84rem;
     }
     .chip {
       display: inline-flex;
@@ -2019,6 +2068,7 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
     const showInsp = !!n && this._inspOpen;
     return html`
       <div class="page">
+      ${this._renderHandoffBar()}
       <cat-toolbar current="explore" .lens=${this._lensNow} .model=${this._model}
         @cat-toolbar:lens=${this._onToolbarLens} @cat-toolbar:query=${e => (this._query = e.detail.q)} @cat-toolbar:pick=${e => { this._inspOpen = true; this._setItem(e.detail.id); }}></cat-toolbar>
       <div class="wrap ${this._leftOpen ? '' : 'lclosed'} ${this._prepare ? 'work' : ''} ${showInsp ? '' : 'noinsp'}" role="group" aria-label=${i18n.getMessage('Catalog workspace')} @keydown=${this._onKey}>
@@ -2028,7 +2078,7 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
             @cat-universe:focus=${this._onUniFocus} @cat-universe:select=${this._onUniSelect} @cat-universe:lens=${e => { this._lensNow = e.detail.lens; this._lensInit = e.detail.lens; }}
             @cat-universe:investigate=${e => this._openDiscovery(e.detail.discovery)}></cat-universe>`)}
         </div>
-        ${showInsp ? html`<div class="insp"><cat-inspector .model=${this._model} item-id=${n.id} .findings=${this._inspectorFindings(n)} @cat-inspector:close=${() => (this._inspOpen = false)}></cat-inspector></div>` : nothing}
+        ${showInsp ? html`<div class="insp"><cat-inspector .model=${this._model} item-id=${n.id} .findings=${this._inspectorFindings(n)} .lifecycle=${this._lifecycleFor(n)} @cat-inspector:lifecycle=${e => this._handoff(e.detail.action, {itemId: e.detail.itemId})} @cat-inspector:close=${() => (this._inspOpen = false)}></cat-inspector></div>` : nothing}
       </div>
       </div>`;
   }
@@ -2136,6 +2186,7 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
       ${d.id === 'ai-readiness' && this._readinessError ? html`<div class="note" role="status">${i18n.getMessage('Variable counts could not be read ({0}). The form check is shown as pending, not as passed.', this._readinessError)}</div>` : nothing}
       ${this._renderTarget()}
       ${this._renderItemContext(d)}
+      ${this._renderLifecycle(d)}
       ${d.id === 'overlap' ? html`<div>
           <div class="muted" id="grp">${i18n.getMessage('Candidate groups in scope')}</div>
           <ul class="starts" aria-labelledby="grp">${groups.slice(0, 6).map(g => html`<li><button aria-pressed=${sel?.id === g.id} @click=${() => this._setItem(g.ids[0])}>
@@ -2241,6 +2292,65 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
   }
 
   /** Deterministic findings for the inspector (compact, read-only). */
+  /* ---------- Understand → Grow / Improve ---------- */
+  /** Hands what the person is looking at to Grow or Improve, with a way back to exactly this view. */
+  _handoff(action, ref = {}) {
+    const m = this._model;
+    const by = nodeIndex(m);
+    const n = ref.itemId ? by.get(ref.itemId) : null;
+    const cat = ref.categoryId ? m.clusters.find(c => c.id === ref.categoryId) : null;
+    const group = action === 'consolidate' && n ? this._disc.overlap?.groupOf.get(n.id) : null;
+    const offering = ref.serviceId ? this._disc.csdm?.data.offeringById.get(ref.serviceId) : null;
+    startHandoff({
+      action,
+      source: {investigation: this._active || null, lens: this._lensNow},
+      item: n ? {id: n.id, name: n.name} : undefined,
+      group: group ? {ids: [...group.ids]} : undefined,
+      category: cat ? {id: cat.id, title: m.catTitle[cat.id] || cat.title} : undefined,
+      service: offering ? {id: offering.id, name: offering.name} : undefined,
+      returnTo: `/explore${window.location.search}`
+    });
+  }
+
+  /** The Grow and Improve actions this item supports, only from evidence the engines already hold. */
+  _lifecycleFor(n) {
+    const out = [];
+    const add = action => out.push({action, pillar: ACTIONS[action].pillar, label: ACTIONS[action].label()});
+    if (this._disc.overlap?.groupOf.get(n.id)) add('consolidate');
+    if (this._disc.form?.byItem.get(n.id)?.findings.length) add('simplify');
+    if (this._disc.taxonomy?.findings.get(n.id)?.length) add('reclassify');
+    add('create-variant');
+    return out;
+  }
+
+  /** Short, contextual actions inside an investigation. Nothing is shown unless the investigation supports it. */
+  _renderLifecycle(d) {
+    const n = this._item ? nodeIndex(this._model).get(this._item) : null;
+    const btn = (action, ref, text) => html`<button class="lcb ${ACTIONS[action].pillar}" @click=${() => this._handoff(action, ref)}>${text || ACTIONS[action].label()}</button>`;
+    const rows = [];
+    if (d.id === 'overlap' && n && this._disc.overlap?.groupOf.get(n.id)) rows.push(btn('consolidate', {itemId: n.id}));
+    if (d.id === 'form-intelligence' && n && this._disc.form?.byItem.get(n.id)?.findings.length) rows.push(btn('simplify', {itemId: n.id}));
+    if (d.id === 'taxonomy' && n && this._disc.taxonomy?.findings.get(n.id)?.length) rows.push(btn('reclassify', {itemId: n.id}));
+    const cat = this._cat ? this._model.clusters.find(c => c.id === this._cat && !c.uncategorised) : null;
+    if (d.id === 'taxonomy' && cat && cat.items.length <= 3) rows.push(btn('fill-gap', {categoryId: cat.id}, i18n.getMessage('Grow: Fill gap in “{0}”', this._model.catTitle[cat.id] || cat.title)));
+    if (d.id === 'csdm-alignment' && this._disc.csdm) {
+      const data = this._disc.csdm.data;
+      const unserved = data.offerings.filter(o => !(data.byOffering.get(o.id)?.length > 0));
+      unserved.slice(0, 3).forEach(o => rows.push(btn('create-item', {serviceId: o.id}, i18n.getMessage('Grow: Create item for “{0}”', o.name))));
+      if (unserved.length > 3) rows.push(html`<span class="hint">${i18n.getMessage('and {0} more services without an item', fmt(unserved.length - 3))}</span>`);
+    }
+    return rows.length ? html`<div class="lc" role="group" aria-label=${i18n.getMessage('Take this further')}><span class="muted">${i18n.getMessage('Take this further')}</span><div class="lc-row">${rows}</div></div>` : nothing;
+  }
+
+  /** While an Improve action is worked here, a slim way back to the remediation workspace. */
+  _renderHandoffBar() {
+    const h = getHandoff();
+    if (!h || h.stage !== 'remediating') return nothing;
+    return html`<div class="hbar" role="status"><span>${ACTIONS[h.action].label()}${h.item ? html` · <b>${h.item.name}</b>` : nothing}</span>
+      <button class="chip" @click=${() => navigate('/improve')}>← ${i18n.getMessage('Back to remediation')}</button>
+      <button class="chip" @click=${() => { clearHandoff(); this.requestUpdate(); }} aria-label=${i18n.getMessage('Finish remediation and clear its context')}>${i18n.getMessage('Done')} ✕</button></div>`;
+  }
+
   _inspectorFindings(n) {
     const id = n.id;
     const out = [];
@@ -2470,7 +2580,8 @@ export const withWorkspace = Base => class Workspace extends withWidgetContext(B
     if (!n) {
       const cat = this._cat ? this._model.clusters.find(c => c.id === this._cat) : null;
       return html`<div class="focus-body">${this._renderHeader(false)}${hl}
-        ${cat ? html`<section class="catctx"><b>${cat.title}</b><span>${i18n.getMessage('{0} items', fmt(cat.items.length))}</span><button class="chip" @click=${() => this._setCat(null)}>${i18n.getMessage('All categories')} ✕</button></section>` : nothing}
+        ${cat ? html`<section class="catctx"><b>${cat.title}</b><span>${i18n.getMessage('{0} items', fmt(cat.items.length))}</span><button class="chip" @click=${() => this._setCat(null)}>${i18n.getMessage('All categories')} ✕</button>
+          ${cat.items.length <= 3 ? html`<button class="lcb grow" @click=${() => this._handoff('fill-gap', {categoryId: cat.id})}>${ACTIONS['fill-gap'].label()}</button>` : nothing}</section>` : nothing}
         ${this._renderOpportunities()}
         ${this._renderViews()}</div>`;
     }
