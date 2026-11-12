@@ -121,8 +121,7 @@ export default class CatAppNav extends AIUXElement {
   render() {
     const items = [
       ['overview', i18n.getMessage('Home')],
-      ['explore', i18n.getMessage('Explore')],
-      ['investigate', i18n.getMessage('Investigate')]
+      ['explore', i18n.getMessage('Explore')]
     ];
     return html`<nav aria-label=${i18n.getMessage('Catalog Intelligence 360')}>
       <div class="tabs">

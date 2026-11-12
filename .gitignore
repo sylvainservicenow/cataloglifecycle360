@@ -18,3 +18,4 @@ src/lux/pages/.widget-sandbox-bare
 # <<< aiux widget sandbox
 
 .playwright-mcp/
+.gstack/

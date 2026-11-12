@@ -95,7 +95,7 @@ export default class OverviewPage extends withWidgetContext(AIUXElement) {
   }
 
   _go = () => navigate('/explore');
-  _inv = d => navigate(`/investigate?d=${d}`);
+  _inv = d => navigate(`/explore?d=${d}`);
 
   _kpi(value, label) {
     return html`<div class="rise rounded-2xl border border-base-300 bg-base-100 p-4 shadow-sm">

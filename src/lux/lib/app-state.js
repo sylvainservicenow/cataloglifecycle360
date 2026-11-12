@@ -39,11 +39,9 @@ export function destination(page, s = state) {
   if (page === 'overview') return '/overview';
   if (page === 'explore') {
     if (s.itemId) q.set('item', s.itemId);
+    if (s.investigation) q.set('d', s.investigation);
     if (s.categoryId && s.categoryId !== '__none__') q.set('cat', s.categoryId);
     return `/explore${q.size ? `?${q}` : ''}`;
   }
-  q.set('d', s.investigation || 'ai-readiness');
-  if (s.categoryId) q.set('cat', s.categoryId);
-  if (s.itemId) q.set('item', s.itemId);
-  return `/investigate?${q}`;
+  return destination('explore', s);
 }

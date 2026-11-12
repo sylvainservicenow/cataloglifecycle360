@@ -36,6 +36,7 @@ export default class CatWorkbench extends AIUXWidgetElement {
   static properties = {
     mode: {type: String}, // form | overlap | category | service
     context: {attribute: false},
+    autostart: {attribute: false}, // start the assessment as soon as the context is valid (set by the host after an explicit click)
     _phase: {state: true}, // ready | generating | review | applying | done | error
     _res: {state: true},
     _edit: {state: true},
@@ -296,6 +297,10 @@ export default class CatWorkbench extends AIUXWidgetElement {
     if (changed.has('context') || changed.has('mode')) this._reset();
   }
 
+  updated(changed) {
+    if ((changed.has('context') || changed.has('mode')) && this.autostart && this.context && this._phase === 'ready') this._generate();
+  }
+
   /* ---------- generate ---------- */
   async _generate() {
     this._phase = 'generating';
@@ -543,7 +548,7 @@ export default class CatWorkbench extends AIUXWidgetElement {
       <ul>${r.results.map(x => this.mode === 'form'
         ? html`<li>${x.verified ? '✓' : '✕'} <b>${x.variable.label || x.variable.name}</b> · ${x.field === 'label' ? i18n.getMessage('label') : i18n.getMessage('help text')}: “${x.to}”</li>`
         : html`<li>${x.verified ? '✓' : '✕'} ${this.mode === 'category' ? i18n.getMessage('Category “{0}” is now linked', x.title) : i18n.getMessage('Service offering “{0}” is now linked', x.title)}</li>`)}</ul>
-      <div class="actions"><button class="primary" @click=${() => this.dispatchEvent(new CustomEvent('cat-workbench:close', {bubbles: true, composed: true}))}>${i18n.getMessage('Back to Investigate')}</button>
-        <button @click=${() => this.dispatchEvent(new CustomEvent('cat-workbench:explore', {detail: {itemId: this.context.item.id}, bubbles: true, composed: true}))}>${i18n.getMessage('See it in Explore')}</button></div>`;
+      <div class="actions"><button class="primary" @click=${() => this.dispatchEvent(new CustomEvent('cat-workbench:close', {bubbles: true, composed: true}))}>${i18n.getMessage('Back to the item')}</button>
+        <button @click=${() => this.dispatchEvent(new CustomEvent('cat-workbench:explore', {detail: {itemId: this.context.item.id}, bubbles: true, composed: true}))}>${i18n.getMessage('Show it in the universe')}</button></div>`;
   }
 }

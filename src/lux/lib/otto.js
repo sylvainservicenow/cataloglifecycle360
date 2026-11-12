@@ -29,7 +29,7 @@ export function investigateUrl({d, item, cat, open}) {
   if (cat) q.set('cat', cat);
   if (item) q.set('item', item);
   if (open) q.set('open', open);
-  return `/investigate?${q}`;
+  return `/explore?${q}`;
 }
 
 /** The record an item-specific tool applies to: a native sys_id, else a name, else the page's own selection. */

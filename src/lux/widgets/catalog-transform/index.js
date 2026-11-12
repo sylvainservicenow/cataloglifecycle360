@@ -23,6 +23,7 @@ const FIELDS = [
 export default class CatTransform extends AIUXWidgetElement {
   static properties = {
     itemId: {type: String, attribute: 'item-id'},
+    autostart: {type: Boolean}, // generate as soon as the item is read (set by the host after an explicit click)
     readiness: {attribute: false}, // AI readiness result from the page (assessments by item)
     _phase: {state: true}, // reading | ready | generating | review | applying | done | error
     _item: {state: true},
@@ -390,6 +391,7 @@ export default class CatTransform extends AIUXWidgetElement {
   willUpdate(changed) {
     if (changed.has('itemId') && this.itemId) {
       this._reset();
+      this._auto = this.autostart;
       this._open();
     }
   }
@@ -411,6 +413,10 @@ export default class CatTransform extends AIUXWidgetElement {
     // no gap is needed to ask for wording: with none found, offer both fields (the person can untick)
     if (!Object.values(this._pick).some(Boolean)) this._pick = Object.fromEntries(FIELDS.map(f => [f.key, true]));
     this._phase = 'ready';
+    if (this._auto) {
+      this._auto = false;
+      this._generate();
+    }
   }
 
   async _call(input) {
@@ -695,8 +701,8 @@ export default class CatTransform extends AIUXWidgetElement {
       <h3>${i18n.getMessage('Deterministic gaps, recalculated')}</h3>
       ${resolved.length ? html`<ul>${resolved.map(id => html`<li>✓ ${by.get(id) || label(id)} · ${i18n.getMessage('resolved')}</li>`)}</ul>` : html`<p class="muted">${i18n.getMessage('No gap was resolved by this change.')}</p>`}
       ${open.length ? html`<p class="muted">${i18n.getMessage('Still open: {0}', open.map(id => by.get(id) || id).join(', '))}</p>` : html`<p>${i18n.getMessage('No gaps remain for this item.')}</p>`}
-      <div class="actions"><button class="primary" @click=${() => this.dispatchEvent(new CustomEvent('cat-transform:close', {bubbles: true, composed: true}))}>${i18n.getMessage('Back to Investigate')}</button>
-        <button class="ghost" @click=${() => this.dispatchEvent(new CustomEvent('cat-transform:explore', {detail: {itemId: this.itemId}, bubbles: true, composed: true}))}>${i18n.getMessage('See it in Explore')}</button></div>`;
+      <div class="actions"><button class="primary" @click=${() => this.dispatchEvent(new CustomEvent('cat-transform:close', {bubbles: true, composed: true}))}>${i18n.getMessage('Back to the item')}</button>
+        <button class="ghost" @click=${() => this.dispatchEvent(new CustomEvent('cat-transform:explore', {detail: {itemId: this.itemId}, bubbles: true, composed: true}))}>${i18n.getMessage('Show it in the universe')}</button></div>`;
   }
 }
 
